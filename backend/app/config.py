@@ -9,8 +9,8 @@ class Settings(BaseSettings):
     DEBUG: bool = False
     SECRET_KEY: str = "change-me-in-production-use-a-real-secret-key"
 
-    # Database
-    DATABASE_URL: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/cloakhaven"
+    # Database — uses SQLite by default; set DATABASE_URL env var to override
+    DATABASE_URL: str = "sqlite+aiosqlite:///./cloakhaven.db"
 
     # JWT
     JWT_SECRET_KEY: str = "change-me-jwt-secret-key"

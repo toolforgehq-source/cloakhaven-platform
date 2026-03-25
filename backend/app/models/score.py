@@ -1,8 +1,7 @@
 import uuid
 from datetime import datetime
-from sqlalchemy import String, DateTime, ForeignKey, Float, Integer, Boolean, JSON
+from sqlalchemy import String, DateTime, ForeignKey, Float, Integer, Boolean, JSON, Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy.dialects.postgresql import UUID
 from app.database import Base
 
 
@@ -10,10 +9,10 @@ class Score(Base):
     __tablename__ = "scores"
 
     id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+        Uuid, primary_key=True, default=uuid.uuid4
     )
     user_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, unique=True
+        Uuid, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, unique=True
     )
     overall_score: Mapped[int] = mapped_column(Integer, nullable=False)
     social_media_score: Mapped[int] = mapped_column(Integer, nullable=False)
@@ -34,10 +33,10 @@ class ScoreHistory(Base):
     __tablename__ = "score_history"
 
     id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+        Uuid, primary_key=True, default=uuid.uuid4
     )
     user_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+        Uuid, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
     )
     overall_score: Mapped[int] = mapped_column(Integer, nullable=False)
     social_media_score: Mapped[int] = mapped_column(Integer, nullable=False)

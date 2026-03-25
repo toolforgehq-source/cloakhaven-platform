@@ -1,8 +1,7 @@
 import uuid
 from datetime import datetime
-from sqlalchemy import String, DateTime, ForeignKey, Text, Float, Integer, Boolean
+from sqlalchemy import String, DateTime, ForeignKey, Text, Float, Integer, Boolean, Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy.dialects.postgresql import UUID
 from app.database import Base
 
 
@@ -10,10 +9,10 @@ class Finding(Base):
     __tablename__ = "findings"
 
     id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+        Uuid, primary_key=True, default=uuid.uuid4
     )
     user_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+        Uuid, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
     )
     source: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
     source_type: Mapped[str] = mapped_column(String(20), nullable=False)  # public, private_upload
