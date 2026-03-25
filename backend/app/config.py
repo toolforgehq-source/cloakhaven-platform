@@ -1,5 +1,10 @@
+import os
+
 from pydantic_settings import BaseSettings
 from typing import Optional
+
+# Use persistent volume path on Fly.io, local file otherwise
+_default_db_path = "/data/app.db" if os.path.isdir("/data") else "./cloakhaven.db"
 
 
 class Settings(BaseSettings):
@@ -9,8 +14,8 @@ class Settings(BaseSettings):
     DEBUG: bool = False
     SECRET_KEY: str = "change-me-in-production-use-a-real-secret-key"
 
-    # Database — uses SQLite by default; set DATABASE_URL env var to override
-    DATABASE_URL: str = "sqlite+aiosqlite:///./cloakhaven.db"
+    # Database — uses SQLite; auto-detects /data volume for Fly.io
+    DATABASE_URL: str = f"sqlite+aiosqlite:///{_default_db_path}"
 
     # JWT
     JWT_SECRET_KEY: str = "change-me-jwt-secret-key"
