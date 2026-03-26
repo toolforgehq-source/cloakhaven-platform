@@ -1,13 +1,31 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "@/lib/auth";
+
+function getPasswordStrength(password: string): { level: number; label: string; color: string } {
+  if (!password) return { level: 0, label: "", color: "" };
+  let score = 0;
+  if (password.length >= 8) score++;
+  if (password.length >= 12) score++;
+  if (/[A-Z]/.test(password)) score++;
+  if (/[0-9]/.test(password)) score++;
+  if (/[^A-Za-z0-9]/.test(password)) score++;
+
+  if (score <= 1) return { level: 1, label: "Weak", color: "#EF4444" };
+  if (score <= 2) return { level: 2, label: "Fair", color: "#EAB308" };
+  if (score <= 3) return { level: 3, label: "Good", color: "#84CC16" };
+  return { level: 4, label: "Strong", color: "#10B981" };
+}
 
 export default function Register() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
+  const [dateOfBirth, setDateOfBirth] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+
+  const strength = useMemo(() => getPasswordStrength(password), [password]);
   const { register } = useAuth();
   const navigate = useNavigate();
 
@@ -18,9 +36,20 @@ export default function Register() {
       setError("Password must be at least 8 characters");
       return;
     }
+    if (!/[A-Z]/.test(password) || !/[0-9]/.test(password)) {
+      setError("Password must include at least one uppercase letter and one number");
+      return;
+    }
+    if (dateOfBirth) {
+      const age = Math.floor((Date.now() - new Date(dateOfBirth).getTime()) / (365.25 * 24 * 60 * 60 * 1000));
+      if (age < 13) {
+        setError("You must be at least 13 years old to create an account");
+        return;
+      }
+    }
     setLoading(true);
     try {
-      await register({ email, password, full_name: fullName });
+      await register({ email, password, full_name: fullName, date_of_birth: dateOfBirth || undefined });
       navigate("/dashboard");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Registration failed");
@@ -70,6 +99,17 @@ export default function Register() {
             />
           </div>
           <div>
+            <label className="block text-sm font-medium text-slate-300 mb-1.5">Date of Birth</label>
+            <input
+              type="date"
+              value={dateOfBirth}
+              onChange={(e) => setDateOfBirth(e.target.value)}
+              className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+              max={new Date().toISOString().split("T")[0]}
+            />
+            <p className="text-xs text-slate-500 mt-1">Used to exclude juvenile content from your score</p>
+          </div>
+          <div>
             <label className="block text-sm font-medium text-slate-300 mb-1.5">Password</label>
             <input
               type="password"
@@ -80,6 +120,20 @@ export default function Register() {
               required
               minLength={8}
             />
+            {password && (
+              <div className="mt-2">
+                <div className="flex gap-1">
+                  {[1, 2, 3, 4].map((i) => (
+                    <div
+                      key={i}
+                      className="h-1.5 flex-1 rounded-full transition-colors"
+                      style={{ backgroundColor: i <= strength.level ? strength.color : "#334155" }}
+                    />
+                  ))}
+                </div>
+                <p className="text-xs mt-1" style={{ color: strength.color }}>{strength.label}</p>
+              </div>
+            )}
           </div>
           <button
             type="submit"

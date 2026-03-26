@@ -7,6 +7,7 @@ import {
   Twitter, Instagram, Facebook, Linkedin, BarChart3,
   ChevronRight, RefreshCw, Share2
 } from "lucide-react";
+import Navbar from "@/components/Navbar";
 
 function ScoreGauge({ score, color, label }: { score: number; color: string; label: string }) {
   const pct = (score / 1000) * 100;
@@ -57,6 +58,14 @@ const PLATFORM_ICONS: Record<string, typeof Twitter> = {
   linkedin: Linkedin,
 };
 
+const PLATFORM_LABELS: Record<string, string> = {
+  twitter: "X / Twitter",
+  instagram: "Instagram",
+  facebook: "Facebook",
+  linkedin: "LinkedIn",
+  tiktok: "TikTok",
+};
+
 export default function Dashboard() {
   const { user, logout } = useAuth();
   const [score, setScore] = useState<ScoreData | null>(null);
@@ -100,18 +109,37 @@ export default function Dashboard() {
     }
   };
 
+  const navLinks = [
+    { to: "/dashboard", label: "Dashboard" },
+    { to: "/findings", label: "Findings" },
+    { to: "/search", label: "Search" },
+    { to: "/settings", label: "Settings" },
+  ];
+
+  const navRight = (
+    <div className="flex items-center gap-3 md:pl-4 md:border-l md:border-slate-800">
+      <span className="text-sm text-slate-400">{user?.email}</span>
+      <button onClick={logout} className="text-sm text-red-400 hover:text-red-300">Sign out</button>
+    </div>
+  );
+
   if (loading) {
     return (
-      <DashboardShell user={user} logout={logout}>
-        <div className="flex items-center justify-center h-96">
-          <RefreshCw className="w-6 h-6 text-indigo-400 animate-spin" />
-        </div>
-      </DashboardShell>
+      <div className="min-h-screen bg-slate-950">
+        <Navbar links={navLinks} rightContent={navRight} />
+        <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <div className="flex items-center justify-center h-96">
+            <RefreshCw className="w-6 h-6 text-indigo-400 animate-spin" />
+          </div>
+        </main>
+      </div>
     );
   }
 
   return (
-    <DashboardShell user={user} logout={logout}>
+    <div className="min-h-screen bg-slate-950">
+      <Navbar links={navLinks} rightContent={navRight} />
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       {/* Score Section */}
       {score ? (
         <div className="grid lg:grid-cols-3 gap-6 mb-8">
@@ -271,7 +299,7 @@ export default function Dashboard() {
                   <div className="flex items-center gap-3">
                     <Icon className="w-5 h-5 text-slate-400" />
                     <div>
-                      <p className="text-sm text-white capitalize">{platform === "twitter" ? "X / Twitter" : platform}</p>
+                      <p className="text-sm text-white">{PLATFORM_LABELS[platform] || platform}</p>
                       {connected && (
                         <p className="text-xs text-slate-500">
                           {connected.connection_type === "api" ? "API Connected" : "Data Uploaded"}
@@ -299,33 +327,6 @@ export default function Dashboard() {
           </div>
         </div>
       </div>
-    </DashboardShell>
-  );
-}
-
-function DashboardShell({ children, user, logout }: { children: React.ReactNode; user: { email?: string } | null; logout: () => void }) {
-  return (
-    <div className="min-h-screen bg-slate-950">
-      <nav className="border-b border-slate-800">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-          <Link to="/dashboard" className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-indigo-500 flex items-center justify-center font-bold text-sm text-white">CH</div>
-            <span className="text-lg font-semibold text-white">Cloak Haven</span>
-          </Link>
-          <div className="flex items-center gap-6">
-            <Link to="/dashboard" className="text-sm text-white font-medium">Dashboard</Link>
-            <Link to="/findings" className="text-sm text-slate-400 hover:text-white transition">Findings</Link>
-            <Link to="/search" className="text-sm text-slate-400 hover:text-white transition">Search</Link>
-            <Link to="/settings" className="text-sm text-slate-400 hover:text-white transition">Settings</Link>
-            <div className="flex items-center gap-3 pl-4 border-l border-slate-800">
-              <span className="text-sm text-slate-400">{user?.email}</span>
-              <button onClick={logout} className="text-sm text-red-400 hover:text-red-300">Sign out</button>
-            </div>
-          </div>
-        </div>
-      </nav>
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {children}
       </main>
     </div>
   );

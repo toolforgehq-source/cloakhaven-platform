@@ -11,6 +11,8 @@ import Privacy from "@/pages/Privacy";
 import Terms from "@/pages/Terms";
 import Profile from "@/pages/Profile";
 import EmployerSearch from "@/pages/EmployerSearch";
+import Pricing from "@/pages/Pricing";
+import ForgotPassword from "@/pages/ForgotPassword";
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -50,7 +52,8 @@ function App() {
           <Route path="/search" element={<Search />} />
           <Route path="/privacy" element={<Privacy />} />
           <Route path="/terms" element={<Terms />} />
-          <Route path="/pricing" element={<Landing />} />
+          <Route path="/pricing" element={<Pricing />} />
+          <Route path="/forgot-password" element={<ForgotPassword />} />
           <Route path="/profile/:username" element={<Profile />} />
 
           {/* Protected routes */}

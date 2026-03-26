@@ -2,7 +2,8 @@ import { useState, useRef } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "@/lib/auth";
 import { api } from "@/lib/api";
-import { Settings as SettingsIcon, Upload, CreditCard, Shield, CheckCircle } from "lucide-react";
+import { Settings as SettingsIcon, Upload, CreditCard, Shield, CheckCircle, Eye, EyeOff } from "lucide-react";
+import Navbar from "@/components/Navbar";
 
 export default function Settings() {
   const { user, logout } = useAuth();
@@ -27,35 +28,54 @@ export default function Settings() {
     }
   };
 
+  const [checkoutError, setCheckoutError] = useState("");
+  const [checkoutLoading, setCheckoutLoading] = useState<string | null>(null);
+  const [visibility, setVisibility] = useState(user?.profile_visibility || "public");
+  const [visibilitySaving, setVisibilitySaving] = useState(false);
+
   const handleCheckout = async (type: "audit" | "subscriber" | "employer") => {
+    setCheckoutError("");
+    setCheckoutLoading(type);
     try {
       const result = await api.createCheckout(type);
       window.location.href = result.checkout_url;
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Checkout failed");
+      setCheckoutError(err instanceof Error ? err.message : "Checkout failed");
+    } finally {
+      setCheckoutLoading(null);
     }
   };
 
+  const handleVisibilityToggle = async () => {
+    const newVisibility = visibility === "public" ? "private" : "public";
+    setVisibilitySaving(true);
+    try {
+      await api.put("/api/v1/users/me/visibility", { visibility: newVisibility });
+      setVisibility(newVisibility);
+    } catch {
+      // revert on failure
+    } finally {
+      setVisibilitySaving(false);
+    }
+  };
+
+  const navLinks = [
+    { to: "/dashboard", label: "Dashboard" },
+    { to: "/findings", label: "Findings" },
+    { to: "/search", label: "Search" },
+    { to: "/settings", label: "Settings" },
+  ];
+
+  const navRight = (
+    <div className="flex items-center gap-3 md:pl-4 md:border-l md:border-slate-800">
+      <span className="text-sm text-slate-400">{user?.email}</span>
+      <button onClick={logout} className="text-sm text-red-400 hover:text-red-300">Sign out</button>
+    </div>
+  );
+
   return (
     <div className="min-h-screen bg-slate-950">
-      <nav className="border-b border-slate-800">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-          <Link to="/dashboard" className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-indigo-500 flex items-center justify-center font-bold text-sm text-white">CH</div>
-            <span className="text-lg font-semibold text-white">Cloak Haven</span>
-          </Link>
-          <div className="flex items-center gap-6">
-            <Link to="/dashboard" className="text-sm text-slate-400 hover:text-white transition">Dashboard</Link>
-            <Link to="/findings" className="text-sm text-slate-400 hover:text-white transition">Findings</Link>
-            <Link to="/search" className="text-sm text-slate-400 hover:text-white transition">Search</Link>
-            <Link to="/settings" className="text-sm text-white font-medium">Settings</Link>
-            <div className="flex items-center gap-3 pl-4 border-l border-slate-800">
-              <span className="text-sm text-slate-400">{user?.email}</span>
-              <button onClick={logout} className="text-sm text-red-400 hover:text-red-300">Sign out</button>
-            </div>
-          </div>
-        </div>
-      </nav>
+      <Navbar links={navLinks} rightContent={navRight} />
 
       <main className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
         <h1 className="text-2xl font-bold text-white flex items-center gap-2">
@@ -82,9 +102,19 @@ export default function Settings() {
               <span className="text-slate-400">Profile Claimed</span>
               <span className="text-white">{user?.is_profile_claimed ? "Yes" : "No"}</span>
             </div>
-            <div className="flex justify-between">
+            <div className="flex items-center justify-between">
               <span className="text-slate-400">Visibility</span>
-              <span className="text-white capitalize">{user?.profile_visibility}</span>
+              <button
+                onClick={handleVisibilityToggle}
+                disabled={visibilitySaving}
+                className="flex items-center gap-2 text-sm text-white hover:text-indigo-400 transition disabled:opacity-50"
+              >
+                {visibility === "public" ? (
+                  <><Eye className="w-4 h-4" /> Public</>
+                ) : (
+                  <><EyeOff className="w-4 h-4" /> Private</>
+                )}
+              </button>
             </div>
           </div>
         </div>
@@ -97,28 +127,36 @@ export default function Settings() {
           </h2>
           <div className="flex items-center justify-between mb-4">
             <div>
-              <p className="text-sm text-white capitalize">{user?.subscription_tier || "Free"} Plan</p>
+              <p className="text-sm text-white">{(user?.subscription_tier || "free").charAt(0).toUpperCase() + (user?.subscription_tier || "free").slice(1)} Plan</p>
               <p className="text-xs text-slate-400 capitalize">Status: {user?.subscription_status || "inactive"}</p>
             </div>
           </div>
+          {checkoutError && (
+            <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-3 text-sm text-red-400 mb-4">
+              {checkoutError}
+            </div>
+          )}
           <div className="grid sm:grid-cols-3 gap-3">
             <button
               onClick={() => handleCheckout("audit")}
-              className="bg-slate-800 hover:bg-slate-700 text-white py-2.5 rounded-lg text-sm font-medium transition"
+              disabled={checkoutLoading !== null}
+              className="bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-white py-2.5 rounded-lg text-sm font-medium transition"
             >
-              One-Time Audit — $19
+              {checkoutLoading === "audit" ? "Processing..." : "One-Time Audit — $19"}
             </button>
             <button
               onClick={() => handleCheckout("subscriber")}
-              className="bg-indigo-500 hover:bg-indigo-600 text-white py-2.5 rounded-lg text-sm font-medium transition"
+              disabled={checkoutLoading !== null}
+              className="bg-indigo-500 hover:bg-indigo-600 disabled:opacity-50 text-white py-2.5 rounded-lg text-sm font-medium transition"
             >
-              Monthly — $9/mo
+              {checkoutLoading === "subscriber" ? "Processing..." : "Monthly — $9/mo"}
             </button>
             <button
               onClick={() => handleCheckout("employer")}
-              className="bg-slate-800 hover:bg-slate-700 text-white py-2.5 rounded-lg text-sm font-medium transition"
+              disabled={checkoutLoading !== null}
+              className="bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-white py-2.5 rounded-lg text-sm font-medium transition"
             >
-              Employer — $49/mo
+              {checkoutLoading === "employer" ? "Processing..." : "Employer — $49/mo"}
             </button>
           </div>
         </div>

@@ -43,7 +43,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await refreshUser();
   };
 
-  const register = async (data: { email: string; password: string; full_name: string; display_name?: string }) => {
+  const register = async (data: { email: string; password: string; full_name: string; display_name?: string; date_of_birth?: string }) => {
     const tokens = await api.register(data);
     localStorage.setItem("access_token", tokens.access_token);
     localStorage.setItem("refresh_token", tokens.refresh_token);

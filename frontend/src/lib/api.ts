@@ -1,4 +1,4 @@
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
+const API_URL = import.meta.env.VITE_API_URL ?? "";
 
 class ApiClient {
   private baseUrl: string;
@@ -31,10 +31,15 @@ class ApiClient {
     });
 
     if (response.status === 401) {
-      localStorage.removeItem("access_token");
-      localStorage.removeItem("refresh_token");
-      window.location.href = "/login";
-      throw new Error("Unauthorized");
+      const errorBody = await response.json().catch(() => ({ detail: "Invalid email or password" }));
+      // Only redirect if we're NOT already on an auth page (login/register)
+      const onAuthPage = ["/login", "/register"].some(p => window.location.pathname.startsWith(p));
+      if (!onAuthPage) {
+        localStorage.removeItem("access_token");
+        localStorage.removeItem("refresh_token");
+        window.location.href = "/login";
+      }
+      throw new Error(errorBody.detail || "Invalid email or password");
     }
 
     if (!response.ok) {

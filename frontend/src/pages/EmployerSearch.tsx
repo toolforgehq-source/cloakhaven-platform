@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { useAuth } from "@/lib/auth";
 import { api, PublicProfile } from "@/lib/api";
 import { Search, Building2, User, Shield, Lock } from "lucide-react";
+import Navbar from "@/components/Navbar";
 
 export default function EmployerSearch() {
   const { user, logout } = useAuth();
@@ -29,25 +30,22 @@ export default function EmployerSearch() {
     }
   };
 
+  const navLinks = [
+    { to: "/dashboard", label: "Dashboard" },
+    { to: "/employer", label: "Employer Search" },
+    { to: "/settings", label: "Settings" },
+  ];
+
+  const navRight = (
+    <div className="flex items-center gap-3 md:pl-4 md:border-l md:border-slate-800">
+      <span className="text-sm text-slate-400">{user?.email}</span>
+      <button onClick={logout} className="text-sm text-red-400 hover:text-red-300">Sign out</button>
+    </div>
+  );
+
   return (
     <div className="min-h-screen bg-slate-950">
-      <nav className="border-b border-slate-800">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-          <Link to="/dashboard" className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-indigo-500 flex items-center justify-center font-bold text-sm text-white">CH</div>
-            <span className="text-lg font-semibold text-white">Cloak Haven</span>
-          </Link>
-          <div className="flex items-center gap-6">
-            <Link to="/dashboard" className="text-sm text-slate-400 hover:text-white transition">Dashboard</Link>
-            <Link to="/employer" className="text-sm text-white font-medium">Employer Search</Link>
-            <Link to="/settings" className="text-sm text-slate-400 hover:text-white transition">Settings</Link>
-            <div className="flex items-center gap-3 pl-4 border-l border-slate-800">
-              <span className="text-sm text-slate-400">{user?.email}</span>
-              <button onClick={logout} className="text-sm text-red-400 hover:text-red-300">Sign out</button>
-            </div>
-          </div>
-        </div>
-      </nav>
+      <Navbar links={navLinks} rightContent={navRight} />
 
       <main className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
         <div className="flex items-center gap-3 mb-8">
