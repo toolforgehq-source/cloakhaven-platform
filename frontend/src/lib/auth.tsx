@@ -5,7 +5,7 @@ interface AuthContextType {
   user: UserProfile | null;
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
-  register: (data: { email: string; password: string; full_name: string; display_name?: string }) => Promise<void>;
+  register: (data: { email: string; password: string; full_name: string; display_name?: string; date_of_birth?: string }) => Promise<void>;
   logout: () => void;
   refreshUser: () => Promise<void>;
 }

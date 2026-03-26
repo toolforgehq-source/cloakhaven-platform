@@ -52,9 +52,9 @@ export default function Landing() {
             Your digital reputation, quantified
           </div>
           <h1 className="text-5xl sm:text-6xl font-bold tracking-tight leading-tight">
-            The FICO Score for Your{" "}
+            The Global Standard for{" "}
             <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-purple-400">
-              Digital Identity
+              Digital Reputation
             </span>
           </h1>
           <p className="mt-6 text-lg text-slate-400 leading-relaxed max-w-2xl mx-auto">
