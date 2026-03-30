@@ -12,6 +12,7 @@ from app.models.finding import Finding
 from app.models.dispute import Dispute
 from app.schemas.dispute import (
     CreateDisputeRequest,
+    ResolveDisputeRequest,
     DisputeResponse,
     DisputeListResponse,
 )
@@ -104,5 +105,49 @@ async def get_dispute(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Dispute not found",
         )
+
+    return DisputeResponse.model_validate(dispute)
+
+
+@router.put("/disputes/{dispute_id}/resolve", response_model=DisputeResponse)
+async def resolve_dispute(
+    dispute_id: uuid.UUID,
+    request: ResolveDisputeRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Resolve a dispute (admin action)."""
+    result = await db.execute(
+        select(Dispute).where(Dispute.id == dispute_id)
+    )
+    dispute = result.scalar_one_or_none()
+
+    if not dispute:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Dispute not found",
+        )
+
+    if dispute.status != "pending":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Dispute has already been resolved",
+        )
+
+    dispute.status = request.resolution
+    dispute.reviewer_notes = request.reviewer_notes
+    dispute.resolved_at = datetime.utcnow()
+
+    finding_result = await db.execute(
+        select(Finding).where(Finding.id == dispute.finding_id)
+    )
+    finding = finding_result.scalar_one_or_none()
+    if finding:
+        finding.dispute_status = request.resolution
+        if request.resolution == "overturned":
+            finding.final_score_impact = 0.0
+
+    await db.commit()
+    await db.refresh(dispute)
 
     return DisputeResponse.model_validate(dispute)

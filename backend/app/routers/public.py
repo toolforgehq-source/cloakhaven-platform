@@ -9,6 +9,8 @@ from sqlalchemy import select, or_
 from app.database import get_db
 from app.models.user import User
 from app.models.score import Score
+from app.models.finding import Finding
+from app.models.social_account import SocialAccount
 from app.models.public_profile import PublicProfile
 from app.schemas.public import (
     PublicProfileResponse,
@@ -154,6 +156,21 @@ async def get_scorecard(
             detail="No score available",
         )
 
+    # Get findings for category breakdown
+    findings_result = await db.execute(
+        select(Finding).where(Finding.user_id == user_id)
+    )
+    findings = findings_result.scalars().all()
+    category_breakdown: dict[str, int] = {}
+    for f in findings:
+        category_breakdown[f.category] = category_breakdown.get(f.category, 0) + 1
+
+    # Get connected platforms
+    accounts_result = await db.execute(
+        select(SocialAccount.platform).where(SocialAccount.user_id == user_id).distinct()
+    )
+    platforms = [row[0] for row in accounts_result.all()]
+
     return ScoreCardResponse(
         user_id=user_id,
         display_name=user.display_name or user.full_name or "Anonymous",
@@ -167,4 +184,7 @@ async def get_scorecard(
         score_label=get_score_label(score.overall_score),
         calculated_at=score.calculated_at,
         share_url=f"{settings.FRONTEND_URL}/scorecard/{user_id}",
+        platforms_analyzed=platforms,
+        total_findings=len(findings),
+        category_breakdown=category_breakdown,
     )

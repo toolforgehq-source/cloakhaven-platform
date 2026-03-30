@@ -1,4 +1,5 @@
 import os
+import secrets
 
 from pydantic_settings import BaseSettings
 from typing import Optional
@@ -12,13 +13,13 @@ class Settings(BaseSettings):
     APP_NAME: str = "Cloak Haven"
     APP_VERSION: str = "1.0.0"
     DEBUG: bool = False
-    SECRET_KEY: str = "change-me-in-production-use-a-real-secret-key"
+    SECRET_KEY: str = os.environ.get("SECRET_KEY", secrets.token_urlsafe(32))
 
     # Database — uses SQLite; auto-detects /data volume for Fly.io
     DATABASE_URL: str = f"sqlite+aiosqlite:///{_default_db_path}"
 
     # JWT
-    JWT_SECRET_KEY: str = "change-me-jwt-secret-key"
+    JWT_SECRET_KEY: str = os.environ.get("JWT_SECRET_KEY", secrets.token_urlsafe(32))
     JWT_ALGORITHM: str = "HS256"
     JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 1440  # 24 hours
     JWT_REFRESH_TOKEN_EXPIRE_DAYS: int = 7

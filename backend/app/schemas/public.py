@@ -47,6 +47,9 @@ class ScoreCardResponse(BaseModel):
     score_label: str
     calculated_at: datetime
     share_url: str
+    platforms_analyzed: list[str] = []
+    total_findings: int = 0
+    category_breakdown: dict = {}
 
 
 class EmployerSearchRequest(BaseModel):
@@ -60,3 +63,17 @@ class EmployerReportResponse(BaseModel):
     risk_level: str
     recommendation: str
     searched_at: datetime
+
+
+class EmployerSearchHistoryItem(BaseModel):
+    id: uuid.UUID
+    searched_name: str
+    searched_username: Optional[str]
+    searched_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class EmployerSearchHistoryResponse(BaseModel):
+    searches: list[EmployerSearchHistoryItem]
+    total: int

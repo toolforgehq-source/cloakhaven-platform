@@ -1,11 +1,12 @@
 """Authentication endpoints."""
 
+import re
 import time
 from collections import defaultdict
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from datetime import datetime, timedelta
+from datetime import datetime, date, timedelta
 
 from app.database import get_db
 from app.models.user import User
@@ -37,6 +38,43 @@ _RATE_LIMIT_WINDOW = 60  # seconds
 _RATE_LIMIT_MAX = 10  # max requests per window per IP
 
 
+def _validate_password_strength(password: str) -> None:
+    """Server-side password strength validation."""
+    if len(password) < 8:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Password must be at least 8 characters long",
+        )
+    if not re.search(r"[A-Z]", password):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Password must contain at least one uppercase letter",
+        )
+    if not re.search(r"[a-z]", password):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Password must contain at least one lowercase letter",
+        )
+    if not re.search(r"[0-9]", password):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Password must contain at least one digit",
+        )
+
+
+def _validate_age(dob: date | None) -> None:
+    """Reject users under 13 (COPPA compliance)."""
+    if dob is None:
+        return
+    today = date.today()
+    age = today.year - dob.year - ((today.month, today.day) < (dob.month, dob.day))
+    if age < 13:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="You must be at least 13 years old to create an account",
+        )
+
+
 def _check_rate_limit(request: Request) -> None:
     client_ip = request.client.host if request.client else "unknown"
     now = time.time()
@@ -54,6 +92,8 @@ def _check_rate_limit(request: Request) -> None:
 @router.post("/register", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
 async def register(request: RegisterRequest, raw_request: Request, db: AsyncSession = Depends(get_db)):
     _check_rate_limit(raw_request)
+    _validate_password_strength(request.password)
+    _validate_age(request.date_of_birth)
     # Check if email already exists
     result = await db.execute(select(User).where(User.email == request.email))
     existing_user = result.scalar_one_or_none()
@@ -164,6 +204,7 @@ async def reset_password(request: ResetPasswordRequest, db: AsyncSession = Depen
             detail="Reset token has expired",
         )
 
+    _validate_password_strength(request.new_password)
     user.password_hash = hash_password(request.new_password)
     user.password_reset_token = None
     user.password_reset_expires = None

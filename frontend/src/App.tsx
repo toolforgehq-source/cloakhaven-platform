@@ -13,6 +13,9 @@ import Profile from "@/pages/Profile";
 import EmployerSearch from "@/pages/EmployerSearch";
 import Pricing from "@/pages/Pricing";
 import ForgotPassword from "@/pages/ForgotPassword";
+import DisputeForm from "@/pages/DisputeForm";
+import ScorecardPage from "@/pages/Scorecard";
+import FindingDetail from "@/pages/FindingDetail";
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -55,10 +58,13 @@ function App() {
           <Route path="/pricing" element={<Pricing />} />
           <Route path="/forgot-password" element={<ForgotPassword />} />
           <Route path="/profile/:username" element={<Profile />} />
+          <Route path="/scorecard/:userId" element={<ScorecardPage />} />
 
           {/* Protected routes */}
           <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
           <Route path="/findings" element={<ProtectedRoute><Findings /></ProtectedRoute>} />
+          <Route path="/findings/:id" element={<ProtectedRoute><FindingDetail /></ProtectedRoute>} />
+          <Route path="/findings/:id/dispute" element={<ProtectedRoute><DisputeForm /></ProtectedRoute>} />
           <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
           <Route path="/employer" element={<ProtectedRoute><EmployerSearch /></ProtectedRoute>} />
 

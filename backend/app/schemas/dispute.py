@@ -24,6 +24,11 @@ class DisputeResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class ResolveDisputeRequest(BaseModel):
+    resolution: str = Field(pattern="^(overturned|upheld)$")
+    reviewer_notes: Optional[str] = Field(None, max_length=5000)
+
+
 class DisputeListResponse(BaseModel):
     disputes: list[DisputeResponse]
     total: int

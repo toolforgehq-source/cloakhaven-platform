@@ -203,6 +203,15 @@ class ApiClient {
   async employerSearch(name: string, username?: string) {
     return this.post<EmployerReport>("/api/v1/employer/search", { name, username });
   }
+
+  async getEmployerSearchHistory() {
+    return this.get<EmployerSearchHistory>("/api/v1/employer/search/history");
+  }
+
+  // Settings
+  async updateSettings(data: { display_name?: string; profile_visibility?: string }) {
+    return this.put<UserProfile>("/api/v1/auth/me", data);
+  }
 }
 
 // Types
@@ -345,6 +354,18 @@ export interface EmployerReport {
   risk_level: string;
   recommendation: string;
   searched_at: string;
+}
+
+export interface EmployerSearchHistoryItem {
+  id: string;
+  searched_name: string;
+  searched_username: string | null;
+  searched_at: string;
+}
+
+export interface EmployerSearchHistory {
+  searches: EmployerSearchHistoryItem[];
+  total: number;
 }
 
 export const api = new ApiClient(API_URL);

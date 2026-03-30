@@ -15,6 +15,8 @@ from app.models.audit_log import EmployerSearch
 from app.schemas.public import (
     EmployerSearchRequest,
     EmployerReportResponse,
+    EmployerSearchHistoryItem,
+    EmployerSearchHistoryResponse,
     PublicProfileResponse,
 )
 from app.middleware.auth import get_employer_user
@@ -102,4 +104,32 @@ async def employer_search(
         risk_level=risk_level,
         recommendation=recommendation,
         searched_at=datetime.utcnow(),
+    )
+
+
+@router.get("/search/history", response_model=EmployerSearchHistoryResponse)
+async def get_search_history(
+    current_user: User = Depends(get_employer_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get the employer's search history."""
+    result = await db.execute(
+        select(EmployerSearch)
+        .where(EmployerSearch.employer_user_id == current_user.id)
+        .order_by(EmployerSearch.searched_at.desc())
+        .limit(100)
+    )
+    searches = result.scalars().all()
+
+    return EmployerSearchHistoryResponse(
+        searches=[
+            EmployerSearchHistoryItem(
+                id=s.id,
+                searched_name=s.searched_name,
+                searched_username=s.searched_username,
+                searched_at=s.searched_at,
+            )
+            for s in searches
+        ],
+        total=len(searches),
     )

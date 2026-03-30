@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useParams, Link } from "react-router-dom";
 import { api, PublicProfile, Scorecard } from "@/lib/api";
 import { User, Shield, AlertTriangle } from "lucide-react";
+import Navbar from "@/components/Navbar";
 
 export default function Profile() {
   const { username } = useParams<{ username: string }>();
@@ -35,33 +36,53 @@ export default function Profile() {
     }
   };
 
+  const navLinks = [
+    { to: "/search", label: "Search" },
+    { to: "/pricing", label: "Pricing" },
+    { to: "/login", label: "Log in" },
+  ];
+
+  const navRight = (
+    <Link to="/register" className="bg-indigo-500 hover:bg-indigo-600 text-white text-sm px-4 py-2 rounded-lg transition font-medium">
+      Get Your Score
+    </Link>
+  );
+
   if (loading) {
     return (
-      <PageShell>
-        <div className="flex items-center justify-center h-96">
-          <div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
-        </div>
-      </PageShell>
+      <div className="min-h-screen bg-slate-950">
+        <Navbar links={navLinks} rightContent={navRight} variant="public" />
+        <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <div className="flex items-center justify-center h-96">
+            <div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+          </div>
+        </main>
+      </div>
     );
   }
 
   if (error || !profile) {
     return (
-      <PageShell>
-        <div className="bg-slate-900 border border-slate-800 rounded-xl p-16 text-center">
-          <User className="w-12 h-12 text-slate-600 mx-auto mb-4" />
-          <h2 className="text-xl font-bold text-white mb-2">Profile Not Found</h2>
-          <p className="text-slate-400 mb-6">We couldn't find a profile for @{username}.</p>
-          <Link to="/search" className="text-indigo-400 hover:text-indigo-300 text-sm">
-            Try searching instead
-          </Link>
-        </div>
-      </PageShell>
+      <div className="min-h-screen bg-slate-950">
+        <Navbar links={navLinks} rightContent={navRight} variant="public" />
+        <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <div className="bg-slate-900 border border-slate-800 rounded-xl p-16 text-center">
+            <User className="w-12 h-12 text-slate-600 mx-auto mb-4" />
+            <h2 className="text-xl font-bold text-white mb-2">Profile Not Found</h2>
+            <p className="text-slate-400 mb-6">We couldn't find a profile for @{username}.</p>
+            <Link to="/search" className="text-indigo-400 hover:text-indigo-300 text-sm">
+              Try searching instead
+            </Link>
+          </div>
+        </main>
+      </div>
     );
   }
 
   return (
-    <PageShell>
+    <div className="min-h-screen bg-slate-950">
+      <Navbar links={navLinks} rightContent={navRight} variant="public" />
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <div className="max-w-3xl mx-auto">
         {/* Profile Header */}
         <div className="bg-slate-900 border border-slate-800 rounded-xl p-8 mb-6">
@@ -189,30 +210,6 @@ export default function Profile() {
           </p>
         </div>
       </div>
-    </PageShell>
-  );
-}
-
-function PageShell({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="min-h-screen bg-slate-950">
-      <nav className="border-b border-slate-800">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-          <Link to="/" className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-indigo-500 flex items-center justify-center font-bold text-sm text-white">CH</div>
-            <span className="text-lg font-semibold text-white">Cloak Haven</span>
-          </Link>
-          <div className="flex items-center gap-6">
-            <Link to="/search" className="text-sm text-slate-400 hover:text-white transition">Search</Link>
-            <Link to="/login" className="text-sm text-slate-400 hover:text-white transition">Log in</Link>
-            <Link to="/register" className="bg-indigo-500 hover:bg-indigo-600 text-white text-sm px-4 py-2 rounded-lg transition font-medium">
-              Get Your Score
-            </Link>
-          </div>
-        </div>
-      </nav>
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {children}
       </main>
     </div>
   );

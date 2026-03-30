@@ -1,8 +1,8 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "@/lib/auth";
-import { api, PublicProfile } from "@/lib/api";
-import { Search, Building2, User, Shield, Lock } from "lucide-react";
+import { api, PublicProfile, EmployerSearchHistoryItem } from "@/lib/api";
+import { Search, Building2, User, Shield, Lock, Clock } from "lucide-react";
 import Navbar from "@/components/Navbar";
 
 export default function EmployerSearch() {
@@ -11,8 +11,22 @@ export default function EmployerSearch() {
   const [results, setResults] = useState<PublicProfile[]>([]);
   const [searched, setSearched] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [history, setHistory] = useState<EmployerSearchHistoryItem[]>([]);
 
   const isEmployer = user?.subscription_tier === "employer";
+
+  useEffect(() => {
+    if (isEmployer) loadHistory();
+  }, [isEmployer]);
+
+  const loadHistory = async () => {
+    try {
+      const data = await api.getEmployerSearchHistory();
+      setHistory(data.searches);
+    } catch {
+      // Silently ignore — history is non-critical
+    }
+  };
 
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -172,6 +186,37 @@ export default function EmployerSearch() {
                     </div>
                   </div>
                 ))}
+              </div>
+            )}
+
+            {/* Search History */}
+            {!searched && history.length > 0 && (
+              <div className="mt-8">
+                <div className="flex items-center gap-2 mb-4">
+                  <Clock className="w-4 h-4 text-slate-500" />
+                  <h3 className="text-sm font-medium text-slate-400">Recent Searches</h3>
+                </div>
+                <div className="space-y-2">
+                  {history.slice(0, 10).map((item) => (
+                    <button
+                      key={item.id}
+                      onClick={() => { setQuery(item.searched_name); }}
+                      className="w-full text-left bg-slate-900/50 border border-slate-800 rounded-lg px-4 py-3 hover:bg-slate-900 hover:border-slate-700 transition"
+                    >
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <span className="text-sm text-white">{item.searched_name}</span>
+                          {item.searched_username && (
+                            <span className="text-xs text-slate-500 ml-2">@{item.searched_username}</span>
+                          )}
+                        </div>
+                        <span className="text-xs text-slate-600">
+                          {new Date(item.searched_at).toLocaleDateString()}
+                        </span>
+                      </div>
+                    </button>
+                  ))}
+                </div>
               </div>
             )}
           </>
