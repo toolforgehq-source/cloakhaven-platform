@@ -17,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.models.finding import Finding
-from app.services.content_classifier import classify_content
+from app.services.content_classifier import classify_content, classify_content_llm
 
 logger = logging.getLogger(__name__)
 
@@ -243,7 +243,7 @@ async def scan_youtube_channel(
         comment_count = int(stats.get("commentCount", 0))
         total_engagement = like_count + comment_count
 
-        classification = classify_content(
+        classification = await classify_content_llm(
             text=text,
             source="youtube",
             url=url,

@@ -358,7 +358,7 @@ def _parse_pdl_profile(data: dict) -> EnrichedProfile:
 
     return EnrichedProfile(
         name=full_name,
-        email=data.get("work_email", "") or data.get("personal_emails", [""])[0] if data.get("personal_emails") else "",
+        email=data.get("work_email", "") or (data.get("personal_emails", [""])[0] if isinstance(data.get("personal_emails"), list) and data.get("personal_emails") else ""),
         linkedin_url=linkedin_url,
         twitter_username=twitter_username,
         github_username=github_username,

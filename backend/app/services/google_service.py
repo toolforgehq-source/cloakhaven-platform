@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.models.finding import Finding
-from app.services.content_classifier import classify_web_result
+from app.services.content_classifier import classify_web_result, classify_content_llm
 
 
 GOOGLE_SEARCH_BASE = "https://www.googleapis.com/customsearch/v1"
@@ -89,10 +89,11 @@ async def scan_web_presence(
             title = item.get("title", "")
             snippet = item.get("snippet", "")
 
-            # Classify the search result
-            classification = classify_web_result(
-                title=title,
-                snippet=snippet,
+            # Classify the search result using LLM if available
+            combined_text = f"{title} {snippet}"
+            classification = await classify_content_llm(
+                text=combined_text,
+                source="google",
                 url=url,
             )
 
