@@ -49,7 +49,9 @@ export default function EmployerSearch() {
   const navLinks = [
     { to: "/dashboard", label: "Dashboard" },
     { to: "/employer", label: "Employer Search" },
+    { to: "/disputes", label: "Disputes" },
     { to: "/settings", label: "Settings" },
+    ...(user?.is_admin ? [{ to: "/admin", label: "Admin" }] : []),
   ];
 
   const navRight = (

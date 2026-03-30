@@ -30,6 +30,7 @@ class User(Base):
     stripe_subscription_id: Mapped[str | None] = mapped_column(String(255))
     is_profile_claimed: Mapped[bool] = mapped_column(Boolean, default=False)
     profile_visibility: Mapped[str] = mapped_column(String(20), default="private")
+    is_admin: Mapped[bool] = mapped_column(Boolean, default=False)
 
     # Relationships
     social_accounts = relationship("SocialAccount", back_populates="user", cascade="all, delete-orphan")

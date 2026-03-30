@@ -6,27 +6,31 @@ Handles all transactional emails for Cloak Haven:
 - Password reset
 - Score update alerts
 - Dispute notifications
-- Welcome emails
 
-Uses SMTP with configurable provider (Zoho, SendGrid, etc.)
+Supports SMTP and SendGrid API providers.
 """
 
+import json
+import logging
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from typing import Optional
+from urllib.request import Request, urlopen
+from urllib.error import URLError
 
 from app.config import settings
+
+logger = logging.getLogger("cloakhaven.email")
 
 
 class EmailServiceError(Exception):
     pass
 
 
-def _send_email(to_email: str, subject: str, html_body: str, text_body: Optional[str] = None) -> bool:
+def _send_via_smtp(to_email: str, subject: str, html_body: str, text_body: Optional[str] = None) -> bool:
     """Send an email via SMTP."""
     if not settings.SMTP_HOST or not settings.SMTP_USERNAME:
-        # Email not configured — log and skip
         return False
 
     msg = MIMEMultipart("alternative")
@@ -46,8 +50,46 @@ def _send_email(to_email: str, subject: str, html_body: str, text_body: Optional
                 server.login(settings.SMTP_USERNAME, settings.SMTP_PASSWORD)
             server.sendmail(settings.FROM_EMAIL, to_email, msg.as_string())
         return True
-    except Exception:
+    except Exception as e:
+        logger.error("SMTP send failed: %s", e)
         return False
+
+
+def _send_via_sendgrid(to_email: str, subject: str, html_body: str) -> bool:
+    """Send an email via SendGrid API (no extra dependencies)."""
+    if not settings.SENDGRID_API_KEY:
+        return False
+
+    payload = {
+        "personalizations": [{"to": [{"email": to_email}]}],
+        "from": {"email": settings.FROM_EMAIL, "name": settings.APP_NAME},
+        "subject": subject,
+        "content": [{"type": "text/html", "value": html_body}],
+    }
+
+    req = Request(
+        "https://api.sendgrid.com/v3/mail/send",
+        data=json.dumps(payload).encode("utf-8"),
+        headers={
+            "Authorization": f"Bearer {settings.SENDGRID_API_KEY}",
+            "Content-Type": "application/json",
+        },
+        method="POST",
+    )
+
+    try:
+        with urlopen(req) as resp:
+            return resp.status in (200, 201, 202)
+    except URLError as e:
+        logger.error("SendGrid send failed: %s", e)
+        return False
+
+
+def _send_email(to_email: str, subject: str, html_body: str, text_body: Optional[str] = None) -> bool:
+    """Send an email using the configured provider."""
+    if settings.EMAIL_PROVIDER == "sendgrid" and settings.SENDGRID_API_KEY:
+        return _send_via_sendgrid(to_email, subject, html_body)
+    return _send_via_smtp(to_email, subject, html_body, text_body)
 
 
 def send_verification_email(to_email: str, token: str, full_name: str) -> bool:

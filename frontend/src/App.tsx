@@ -19,6 +19,10 @@ import DisputeForm from "@/pages/DisputeForm";
 import ScorecardPage from "@/pages/Scorecard";
 import FindingDetail from "@/pages/FindingDetail";
 import NotFound from "@/pages/NotFound";
+import Disputes from "@/pages/Disputes";
+import AdminDashboard from "@/pages/AdminDashboard";
+import AdminUsers from "@/pages/AdminUsers";
+import AdminDisputes from "@/pages/AdminDisputes";
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -72,6 +76,10 @@ function App() {
           <Route path="/findings/:id/dispute" element={<ProtectedRoute><DisputeForm /></ProtectedRoute>} />
           <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
           <Route path="/employer" element={<ProtectedRoute><EmployerSearch /></ProtectedRoute>} />
+          <Route path="/disputes" element={<ProtectedRoute><Disputes /></ProtectedRoute>} />
+          <Route path="/admin" element={<ProtectedRoute><AdminDashboard /></ProtectedRoute>} />
+          <Route path="/admin/users" element={<ProtectedRoute><AdminUsers /></ProtectedRoute>} />
+          <Route path="/admin/disputes" element={<ProtectedRoute><AdminDisputes /></ProtectedRoute>} />
 
           {/* Catch-all */}
           <Route path="*" element={<NotFound />} />

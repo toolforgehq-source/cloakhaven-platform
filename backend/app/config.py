@@ -46,11 +46,13 @@ class Settings(BaseSettings):
     ANTHROPIC_API_KEY: str = ""
     LLM_PROVIDER: str = "openai"  # openai or anthropic
 
-    # Email
+    # Email — supports SMTP or SendGrid API
+    EMAIL_PROVIDER: str = "smtp"  # "smtp" or "sendgrid"
     SMTP_HOST: str = ""
     SMTP_PORT: int = 587
     SMTP_USERNAME: str = ""
     SMTP_PASSWORD: str = ""
+    SENDGRID_API_KEY: str = ""
     FROM_EMAIL: str = "hello@cloakhaven.com"
     EMAIL_FROM_HELLO: str = "hello@cloakhaven.com"
     EMAIL_FROM_SUPPORT: str = "support@cloakhaven.com"

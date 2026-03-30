@@ -212,6 +212,41 @@ class ApiClient {
   async updateSettings(data: { display_name?: string; profile_visibility?: string }) {
     return this.put<UserProfile>("/api/v1/auth/me", data);
   }
+
+  // Admin
+  async adminGetStats() {
+    return this.get<AdminStats>("/api/v1/admin/stats");
+  }
+
+  async adminGetUsers(params?: { page?: number; page_size?: number; search?: string; tier?: string }) {
+    const query = params ? "?" + new URLSearchParams(
+      Object.entries(params).filter(([, v]) => v !== undefined).map(([k, v]) => [k, String(v)])
+    ).toString() : "";
+    return this.get<AdminUserListResponse>(`/api/v1/admin/users${query}`);
+  }
+
+  async adminSetUserAdmin(userId: string, isAdmin: boolean) {
+    return this.put<{ message: string }>(`/api/v1/admin/users/${userId}/admin`, { is_admin: isAdmin });
+  }
+
+  async adminSetUserTier(userId: string, tier: string) {
+    return this.put<{ message: string }>(`/api/v1/admin/users/${userId}/tier`, { tier });
+  }
+
+  async adminDeleteUser(userId: string) {
+    return this.delete<{ message: string }>(`/api/v1/admin/users/${userId}`);
+  }
+
+  async adminGetDisputes(params?: { page?: number; page_size?: number; status?: string }) {
+    const query = params ? "?" + new URLSearchParams(
+      Object.entries(params).filter(([, v]) => v !== undefined).map(([k, v]) => [k, String(v)])
+    ).toString() : "";
+    return this.get<AdminDisputeListResponse>(`/api/v1/admin/disputes${query}`);
+  }
+
+  async adminResolveDispute(disputeId: string, data: { resolution: string; reviewer_notes?: string }) {
+    return this.put<{ message: string }>(`/api/v1/admin/disputes/${disputeId}/resolve`, data);
+  }
 }
 
 // Types
@@ -226,6 +261,7 @@ export interface UserProfile {
   subscription_status: string;
   is_profile_claimed: boolean;
   profile_visibility: string;
+  is_admin: boolean;
 }
 
 export interface ScoreData {
@@ -366,6 +402,65 @@ export interface EmployerSearchHistoryItem {
 export interface EmployerSearchHistory {
   searches: EmployerSearchHistoryItem[];
   total: number;
+}
+
+// Admin types
+export interface AdminStats {
+  total_users: number;
+  verified_users: number;
+  paying_users: number;
+  total_findings: number;
+  total_disputes: number;
+  pending_disputes: number;
+  avg_score: number;
+  users_today: number;
+}
+
+export interface AdminUserItem {
+  id: string;
+  email: string;
+  full_name: string | null;
+  display_name: string | null;
+  email_verified: boolean;
+  subscription_tier: string;
+  subscription_status: string;
+  is_admin: boolean;
+  is_profile_claimed: boolean;
+  profile_visibility: string;
+  created_at: string;
+  overall_score: number | null;
+  findings_count: number;
+  disputes_count: number;
+}
+
+export interface AdminUserListResponse {
+  users: AdminUserItem[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
+export interface AdminDisputeItem {
+  id: string;
+  user_id: string;
+  user_email: string;
+  user_name: string | null;
+  finding_id: string;
+  finding_title: string;
+  finding_severity: string;
+  reason: string;
+  supporting_evidence: string | null;
+  status: string;
+  reviewer_notes: string | null;
+  submitted_at: string;
+  resolved_at: string | null;
+}
+
+export interface AdminDisputeListResponse {
+  disputes: AdminDisputeItem[];
+  total: number;
+  page: number;
+  page_size: number;
 }
 
 export const api = new ApiClient(API_URL);

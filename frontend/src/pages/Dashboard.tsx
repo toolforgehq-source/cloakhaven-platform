@@ -114,8 +114,10 @@ export default function Dashboard() {
   const navLinks = [
     { to: "/dashboard", label: "Dashboard" },
     { to: "/findings", label: "Findings" },
+    { to: "/disputes", label: "Disputes" },
     { to: "/search", label: "Search" },
     { to: "/settings", label: "Settings" },
+    ...(user?.is_admin ? [{ to: "/admin", label: "Admin" }] : []),
   ];
 
   const navRight = (

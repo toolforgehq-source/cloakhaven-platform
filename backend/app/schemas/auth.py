@@ -36,6 +36,7 @@ class UserResponse(BaseModel):
     subscription_status: str
     is_profile_claimed: bool
     profile_visibility: str
+    is_admin: bool = False
 
     model_config = {"from_attributes": True}
 
