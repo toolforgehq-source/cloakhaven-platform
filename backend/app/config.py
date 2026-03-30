@@ -55,10 +55,10 @@ class Settings(BaseSettings):
     # AI/LLM for content classification
     OPENAI_API_KEY: str = ""
     ANTHROPIC_API_KEY: str = ""
-    LLM_PROVIDER: str = "openai"  # openai or anthropic
+    LLM_PROVIDER: str = "anthropic"  # openai or anthropic
 
     # Email — supports SMTP or SendGrid API
-    EMAIL_PROVIDER: str = "smtp"  # "smtp" or "sendgrid"
+    EMAIL_PROVIDER: str = "sendgrid"  # "smtp" or "sendgrid"
     SMTP_HOST: str = ""
     SMTP_PORT: int = 587
     SMTP_USERNAME: str = ""
