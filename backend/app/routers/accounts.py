@@ -2,7 +2,6 @@
 
 import uuid
 import os
-import tempfile
 from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status
 from sqlalchemy.ext.asyncio import AsyncSession

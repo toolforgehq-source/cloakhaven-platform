@@ -90,9 +90,9 @@ SEVERITY_MAP: dict[str, str] = {
 }
 
 # Sources that count toward social media component
-SOCIAL_SOURCES = {"twitter", "instagram", "tiktok", "facebook", "linkedin", "upload"}
+SOCIAL_SOURCES = {"twitter", "instagram", "tiktok", "facebook", "linkedin", "upload", "reddit"}
 # Sources that count toward web presence component
-WEB_SOURCES = {"google"}
+WEB_SOURCES = {"google", "youtube"}
 # Sources that count toward posting behavior (future: posts made through Cloak Haven)
 BEHAVIOR_SOURCES = {"cloakhaven_post"}
 
@@ -192,13 +192,16 @@ def is_juvenile_content(finding_date: Optional[datetime], user_dob: Optional[dat
 # ============================================================
 
 ACCURACY_WEIGHTS: dict[str, float] = {
-    "twitter": 15.0,
-    "instagram": 15.0,
-    "tiktok": 10.0,
-    "facebook": 10.0,
-    "linkedin": 10.0,
-    "google": 25.0,
-    "self_verified": 15.0,
+    "twitter": 12.0,
+    "instagram": 12.0,
+    "tiktok": 8.0,
+    "facebook": 8.0,
+    "linkedin": 8.0,
+    "reddit": 8.0,
+    "youtube": 7.0,
+    "google": 20.0,
+    "enrichment": 7.0,
+    "self_verified": 10.0,
 }
 
 
@@ -253,7 +256,7 @@ async def calculate_score(db: AsyncSession, user_id: uuid.UUID) -> Score:
     """
     # Get user for DOB (juvenile content policy)
     user = await db.get(User, user_id)
-    user_dob = user.date_of_birth if user else None
+    _user_dob = user.date_of_birth if user else None  # reserved for juvenile exclusion
 
     # Get all findings for this user
     result = await db.execute(

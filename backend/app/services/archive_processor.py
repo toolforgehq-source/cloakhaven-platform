@@ -17,8 +17,6 @@ import uuid
 import zipfile
 import tempfile
 from datetime import datetime
-from typing import Optional
-from pathlib import Path
 
 from sqlalchemy.ext.asyncio import AsyncSession
 

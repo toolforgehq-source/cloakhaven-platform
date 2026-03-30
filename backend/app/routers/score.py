@@ -94,54 +94,126 @@ async def start_audit(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Start a comprehensive audit of the user's online presence."""
+    """
+    Start a comprehensive audit of the user's online presence.
+
+    Scans all available platforms in order:
+    1. Data enrichment (Proxycurl/PeopleDataLabs) — resolve cross-platform identity
+    2. Twitter/X API — direct tweet scanning
+    3. Reddit API — posts and comments
+    4. YouTube Data API — channel videos
+    5. Google Custom Search — web presence
+    6. Public profile scraping — fallback for platforms without API access
+
+    Each scanner is independent — if one fails, the others continue.
+    """
     audit_id = str(uuid.uuid4())
+    platforms_scanned: list[str] = []
 
-    # Scan connected Twitter accounts if API key is available
-    if settings.TWITTER_BEARER_TOKEN:
+    # Helper: get user's display name and connected usernames
+    name = current_user.full_name or current_user.display_name or ""
+    acct_result = await db.execute(
+        select(SocialAccount).where(
+            SocialAccount.user_id == current_user.id,
+        )
+    )
+    connected_accounts = list(acct_result.scalars().all())
+    usernames = [a.platform_username for a in connected_accounts if a.platform_username]
+
+    # Build a map of platform → username for easy lookup
+    platform_usernames: dict[str, str] = {}
+    for acct in connected_accounts:
+        if acct.platform_username:
+            platform_usernames[acct.platform] = acct.platform_username
+
+    # ── 1. Data Enrichment (resolve identity across platforms) ──
+    if settings.PROXYCURL_API_KEY or settings.PEOPLEDATALABS_API_KEY:
         try:
-            from app.services.twitter_service import scan_twitter_account
-            # Find connected Twitter accounts
-            result = await db.execute(
-                select(SocialAccount).where(
-                    SocialAccount.user_id == current_user.id,
-                    SocialAccount.platform == "twitter",
-                )
+            from app.services.enrichment_service import enrich_person
+            enriched = await enrich_person(
+                name=name,
+                email=current_user.email,
             )
-            twitter_account = result.scalar_one_or_none()
-            if twitter_account and twitter_account.platform_username:
-                await scan_twitter_account(
-                    db, current_user.id, twitter_account.platform_username
-                )
-                logger.info(f"Twitter scan complete for user {current_user.id}")
+            if enriched:
+                # Use enrichment to discover social handles we didn't know about
+                if enriched.twitter_username and "twitter" not in platform_usernames:
+                    platform_usernames["twitter"] = enriched.twitter_username
+                if enriched.github_username and "github" not in platform_usernames:
+                    platform_usernames["github"] = enriched.github_username
+                for platform, url in enriched.social_profiles.items():
+                    if platform not in platform_usernames:
+                        platform_usernames[platform] = url
+                platforms_scanned.append("enrichment")
+                logger.info(f"Data enrichment complete for user {current_user.id}: found {list(enriched.social_profiles.keys())}")
         except Exception as e:
-            logger.warning(f"Twitter scan failed for user {current_user.id}: {e}")
+            logger.warning(f"Data enrichment failed for user {current_user.id}: {e}")
 
-    # Scan web presence via Google if API key is available
+    # ── 2. Twitter/X API scan ──
+    if settings.TWITTER_BEARER_TOKEN:
+        twitter_username = platform_usernames.get("twitter")
+        if twitter_username:
+            try:
+                from app.services.twitter_service import scan_twitter_account
+                await scan_twitter_account(db, current_user.id, twitter_username)
+                platforms_scanned.append("twitter")
+                logger.info(f"Twitter scan complete for user {current_user.id}")
+            except Exception as e:
+                logger.warning(f"Twitter scan failed for user {current_user.id}: {e}")
+
+    # ── 3. Reddit API scan ──
+    if settings.REDDIT_CLIENT_ID and settings.REDDIT_CLIENT_SECRET:
+        reddit_username = platform_usernames.get("reddit")
+        if reddit_username:
+            try:
+                from app.services.reddit_service import scan_reddit_account
+                await scan_reddit_account(db, current_user.id, reddit_username)
+                platforms_scanned.append("reddit")
+                logger.info(f"Reddit scan complete for user {current_user.id}")
+            except Exception as e:
+                logger.warning(f"Reddit scan failed for user {current_user.id}: {e}")
+
+    # ── 4. YouTube Data API scan ──
+    if settings.YOUTUBE_API_KEY:
+        youtube_username = platform_usernames.get("youtube")
+        search_query = youtube_username or name
+        if search_query:
+            try:
+                from app.services.youtube_service import scan_youtube_channel
+                await scan_youtube_channel(db, current_user.id, search_query)
+                platforms_scanned.append("youtube")
+                logger.info(f"YouTube scan complete for user {current_user.id}")
+            except Exception as e:
+                logger.warning(f"YouTube scan failed for user {current_user.id}: {e}")
+
+    # ── 5. Google Custom Search (web presence) ──
     if settings.GOOGLE_API_KEY and settings.GOOGLE_SEARCH_ENGINE_ID:
         try:
             from app.services.google_service import scan_web_presence
-            # Get connected usernames for search queries
-            acct_result = await db.execute(
-                select(SocialAccount.platform_username).where(
-                    SocialAccount.user_id == current_user.id,
-                    SocialAccount.platform_username.isnot(None),
-                )
-            )
-            usernames = [row[0] for row in acct_result.all() if row[0]]
-            name = current_user.full_name or current_user.display_name or ""
             if name:
                 await scan_web_presence(db, current_user.id, name, usernames or None)
+                platforms_scanned.append("google")
                 logger.info(f"Google web scan complete for user {current_user.id}")
         except Exception as e:
             logger.warning(f"Google scan failed for user {current_user.id}: {e}")
 
-    # Calculate score from all findings (existing + newly scanned)
-    score = await calculate_score(db, current_user.id)
+    # ── 6. Public profile scraping (fallback for unscanned platforms) ──
+    if "twitter" not in platforms_scanned:
+        twitter_username = platform_usernames.get("twitter")
+        if twitter_username:
+            try:
+                from app.services.scraping_service import scan_and_create_findings
+                await scan_and_create_findings(db, current_user.id, name, twitter_username)
+                platforms_scanned.append("scraping")
+                logger.info(f"Public scraping complete for user {current_user.id}")
+            except Exception as e:
+                logger.warning(f"Public scraping failed for user {current_user.id}: {e}")
+
+    # ── Calculate final score from all findings ──
+    await calculate_score(db, current_user.id)
     await db.commit()
 
     return AuditStartResponse(
-        message="Audit complete. Your score has been calculated.",
+        message=f"Audit complete. Scanned {len(platforms_scanned)} sources: {', '.join(platforms_scanned) or 'none (no API keys configured)'}.",
         audit_id=audit_id,
         status="complete",
     )
@@ -170,7 +242,7 @@ async def get_audit_status(
         return AuditStatusResponse(
             status="complete",
             progress_pct=100.0,
-            platforms_scanned=["twitter", "google"],
+            platforms_scanned=["twitter", "reddit", "youtube", "google", "enrichment"],
             findings_count=findings_count,
             message="Audit complete. Your score is ready.",
         )

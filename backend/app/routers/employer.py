@@ -1,14 +1,12 @@
 """Employer tier endpoints."""
 
-import uuid
 from datetime import datetime
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, or_, func
 
 from app.database import get_db
 from app.models.user import User
-from app.models.score import Score
 from app.models.finding import Finding
 from app.models.public_profile import PublicProfile
 from app.models.audit_log import EmployerSearch
@@ -68,7 +66,7 @@ async def employer_search(
         cat_result = await db.execute(
             select(Finding.category, func.count(Finding.id)).where(
                 Finding.user_id == profile.matched_user_id,
-                Finding.is_juvenile_content == False,
+                Finding.is_juvenile_content.is_(False),
             ).group_by(Finding.category)
         )
         findings_summary = {row[0]: row[1] for row in cat_result.all()}

@@ -1,7 +1,6 @@
 """Public profile and search endpoints."""
 
 import uuid
-from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, or_
