@@ -23,6 +23,7 @@ import Disputes from "@/pages/Disputes";
 import AdminDashboard from "@/pages/AdminDashboard";
 import AdminUsers from "@/pages/AdminUsers";
 import AdminDisputes from "@/pages/AdminDisputes";
+import EmployerReport from "@/pages/EmployerReport";
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -76,6 +77,7 @@ function App() {
           <Route path="/findings/:id/dispute" element={<ProtectedRoute><DisputeForm /></ProtectedRoute>} />
           <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
           <Route path="/employer" element={<ProtectedRoute><EmployerSearch /></ProtectedRoute>} />
+          <Route path="/employer/report/:name" element={<ProtectedRoute><EmployerReport /></ProtectedRoute>} />
           <Route path="/disputes" element={<ProtectedRoute><Disputes /></ProtectedRoute>} />
           <Route path="/admin" element={<ProtectedRoute><AdminDashboard /></ProtectedRoute>} />
           <Route path="/admin/users" element={<ProtectedRoute><AdminUsers /></ProtectedRoute>} />

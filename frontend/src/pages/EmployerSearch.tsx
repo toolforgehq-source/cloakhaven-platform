@@ -178,14 +178,12 @@ export default function EmployerSearch() {
                             </p>
                           </div>
                         )}
-                        {profile.lookup_username && (
-                          <Link
-                            to={`/profile/${profile.lookup_username}`}
-                            className="bg-slate-800 hover:bg-slate-700 text-white text-xs px-3 py-1.5 rounded-lg transition"
-                          >
-                            View Report
-                          </Link>
-                        )}
+                        <Link
+                          to={`/employer/report/${encodeURIComponent(profile.lookup_name)}`}
+                          className="bg-indigo-500 hover:bg-indigo-600 text-white text-xs px-3 py-1.5 rounded-lg transition"
+                        >
+                          View Report
+                        </Link>
                       </div>
                     </div>
                   </div>

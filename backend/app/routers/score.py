@@ -1,6 +1,7 @@
 """Score and audit endpoints."""
 
 import uuid
+import logging
 from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, desc
@@ -8,6 +9,7 @@ from sqlalchemy import select, desc
 from app.database import get_db
 from app.models.user import User
 from app.models.score import Score, ScoreHistory
+from app.models.social_account import SocialAccount
 from app.schemas.score import (
     ScoreResponse,
     ScoreHistoryItem,
@@ -21,6 +23,9 @@ from app.services.scoring_engine import (
     get_score_color,
     get_score_label,
 )
+from app.config import settings
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1", tags=["score"])
 
@@ -90,16 +95,53 @@ async def start_audit(
     db: AsyncSession = Depends(get_db),
 ):
     """Start a comprehensive audit of the user's online presence."""
-    # For now, calculate score from existing findings
-    # In production, this triggers background scanning of connected accounts + Google
     audit_id = str(uuid.uuid4())
 
-    # Calculate score from existing findings
+    # Scan connected Twitter accounts if API key is available
+    if settings.TWITTER_BEARER_TOKEN:
+        try:
+            from app.services.twitter_service import scan_twitter_account
+            # Find connected Twitter accounts
+            result = await db.execute(
+                select(SocialAccount).where(
+                    SocialAccount.user_id == current_user.id,
+                    SocialAccount.platform == "twitter",
+                )
+            )
+            twitter_account = result.scalar_one_or_none()
+            if twitter_account and twitter_account.platform_username:
+                await scan_twitter_account(
+                    db, current_user.id, twitter_account.platform_username
+                )
+                logger.info(f"Twitter scan complete for user {current_user.id}")
+        except Exception as e:
+            logger.warning(f"Twitter scan failed for user {current_user.id}: {e}")
+
+    # Scan web presence via Google if API key is available
+    if settings.GOOGLE_API_KEY and settings.GOOGLE_SEARCH_ENGINE_ID:
+        try:
+            from app.services.google_service import scan_web_presence
+            # Get connected usernames for search queries
+            acct_result = await db.execute(
+                select(SocialAccount.platform_username).where(
+                    SocialAccount.user_id == current_user.id,
+                    SocialAccount.platform_username.isnot(None),
+                )
+            )
+            usernames = [row[0] for row in acct_result.all() if row[0]]
+            name = current_user.full_name or current_user.display_name or ""
+            if name:
+                await scan_web_presence(db, current_user.id, name, usernames or None)
+                logger.info(f"Google web scan complete for user {current_user.id}")
+        except Exception as e:
+            logger.warning(f"Google scan failed for user {current_user.id}: {e}")
+
+    # Calculate score from all findings (existing + newly scanned)
     score = await calculate_score(db, current_user.id)
     await db.commit()
 
     return AuditStartResponse(
-        message="Audit started. Your score is being calculated.",
+        message="Audit complete. Your score has been calculated.",
         audit_id=audit_id,
         status="complete",
     )
