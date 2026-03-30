@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { Shield, Search, BarChart3, Users, ArrowRight, CheckCircle, Lock, Eye, Menu, X } from "lucide-react";
+import Footer from "@/components/Footer";
+import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 
 function LandingNav() {
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -40,6 +42,7 @@ function LandingNav() {
 }
 
 export default function Landing() {
+  useDocumentTitle();
   return (
     <div className="min-h-screen bg-slate-950 text-white">
       <LandingNav />
@@ -296,27 +299,7 @@ export default function Landing() {
         </div>
       </section>
 
-      {/* Footer */}
-      <footer className="border-t border-slate-800 py-12">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex flex-col md:flex-row justify-between items-center gap-6">
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-lg bg-indigo-500 flex items-center justify-center font-bold text-sm">CH</div>
-              <span className="font-semibold">Cloak Haven</span>
-            </div>
-            <div className="flex items-center gap-6 text-sm text-slate-400">
-              <Link to="/privacy" className="hover:text-white transition">Privacy Policy</Link>
-              <Link to="/terms" className="hover:text-white transition">Terms of Service</Link>
-              <Link to="/search" className="hover:text-white transition">Search</Link>
-            </div>
-            <p className="text-sm text-slate-500">&copy; 2026 Cloak Haven. All rights reserved.</p>
-          </div>
-          <p className="text-xs text-slate-600 text-center mt-8">
-            Cloak Haven scores are not consumer reports under the Fair Credit Reporting Act (FCRA)
-            and are not intended as the sole basis for employment, housing, or credit decisions.
-          </p>
-        </div>
-      </footer>
+      <Footer />
     </div>
   );
 }

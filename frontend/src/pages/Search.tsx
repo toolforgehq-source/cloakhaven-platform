@@ -3,8 +3,11 @@ import { Link } from "react-router-dom";
 import { api, PublicProfile } from "@/lib/api";
 import { Search as SearchIcon, User, Shield } from "lucide-react";
 import Navbar from "@/components/Navbar";
+import Footer from "@/components/Footer";
+import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 
 export default function Search() {
+  useDocumentTitle("Search");
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<PublicProfile[]>([]);
   const [searched, setSearched] = useState(false);
@@ -145,6 +148,8 @@ export default function Search() {
           </Link>
         </div>
       </main>
+
+      <Footer />
     </div>
   );
 }

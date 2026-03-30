@@ -2,8 +2,10 @@ import { useState, useEffect } from "react";
 import { useParams, Link } from "react-router-dom";
 import { api, Scorecard as ScorecardData } from "@/lib/api";
 import { Shield, Copy, Check, ExternalLink } from "lucide-react";
+import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 
 export default function ScorecardPage() {
+  useDocumentTitle("Scorecard");
   const { userId } = useParams<{ userId: string }>();
   const [scorecard, setScorecard] = useState<ScorecardData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -218,10 +220,10 @@ function PageShell({ children }: { children: React.ReactNode }) {
             <div className="w-8 h-8 rounded-lg bg-indigo-500 flex items-center justify-center font-bold text-sm text-white">CH</div>
             <span className="text-lg font-semibold text-white">Cloak Haven</span>
           </Link>
-          <div className="flex items-center gap-6">
-            <Link to="/search" className="text-sm text-slate-400 hover:text-white transition">Search</Link>
+          <div className="flex items-center gap-3 sm:gap-6">
+            <Link to="/search" className="text-sm text-slate-400 hover:text-white transition hidden sm:block">Search</Link>
             <Link to="/login" className="text-sm text-slate-400 hover:text-white transition">Log in</Link>
-            <Link to="/register" className="bg-indigo-500 hover:bg-indigo-600 text-white text-sm px-4 py-2 rounded-lg transition font-medium">
+            <Link to="/register" className="bg-indigo-500 hover:bg-indigo-600 text-white text-xs sm:text-sm px-3 sm:px-4 py-2 rounded-lg transition font-medium">
               Get Your Score
             </Link>
           </div>

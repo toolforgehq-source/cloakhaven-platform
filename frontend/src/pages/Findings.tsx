@@ -4,6 +4,7 @@ import { useAuth } from "@/lib/auth";
 import { api, Finding } from "@/lib/api";
 import { AlertTriangle, Filter, ChevronLeft, ChevronRight, ExternalLink, Flag, Shield } from "lucide-react";
 import Navbar from "@/components/Navbar";
+import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 
 const SEVERITY_COLORS: Record<string, string> = {
   critical: "bg-red-500/10 text-red-400 border-red-500/20",
@@ -14,6 +15,7 @@ const SEVERITY_COLORS: Record<string, string> = {
 };
 
 export default function Findings() {
+  useDocumentTitle("Findings");
   const { user, logout } = useAuth();
   const [findings, setFindings] = useState<Finding[]>([]);
   const [total, setTotal] = useState(0);
@@ -64,17 +66,17 @@ export default function Findings() {
       <Navbar links={navLinks} rightContent={navRight} />
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
           <h1 className="text-2xl font-bold text-white flex items-center gap-2">
             <AlertTriangle className="w-6 h-6 text-amber-400" />
             Findings ({total})
           </h1>
-          <div className="flex items-center gap-3">
-            <Filter className="w-4 h-4 text-slate-400" />
+          <div className="flex items-center gap-2 sm:gap-3">
+            <Filter className="w-4 h-4 text-slate-400 shrink-0" />
             <select
               value={filterSource}
               onChange={(e) => { setFilterSource(e.target.value); setPage(1); }}
-              className="bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              className="bg-slate-800 border border-slate-700 rounded-lg px-2 sm:px-3 py-1.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 min-w-0"
             >
               <option value="">All Sources</option>
               <option value="twitter">Twitter</option>
@@ -87,7 +89,7 @@ export default function Findings() {
             <select
               value={filterSeverity}
               onChange={(e) => { setFilterSeverity(e.target.value); setPage(1); }}
-              className="bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              className="bg-slate-800 border border-slate-700 rounded-lg px-2 sm:px-3 py-1.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 min-w-0"
             >
               <option value="">All Severity</option>
               <option value="critical">Critical</option>
@@ -99,7 +101,10 @@ export default function Findings() {
         </div>
 
         {loading ? (
-          <div className="text-center py-20 text-slate-400">Loading findings...</div>
+          <div className="flex flex-col items-center justify-center py-20">
+            <div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin mb-3" />
+            <p className="text-sm text-slate-400">Loading findings...</p>
+          </div>
         ) : findings.length === 0 ? (
           <div className="bg-slate-900 border border-slate-800 rounded-xl p-12 text-center">
             <Shield className="w-12 h-12 text-indigo-400 mx-auto mb-4" />

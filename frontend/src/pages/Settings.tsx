@@ -4,8 +4,10 @@ import { useAuth } from "@/lib/auth";
 import { api } from "@/lib/api";
 import { Settings as SettingsIcon, Upload, CreditCard, Shield, CheckCircle, Eye, EyeOff } from "lucide-react";
 import Navbar from "@/components/Navbar";
+import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 
 export default function Settings() {
+  useDocumentTitle("Settings");
   const { user, logout } = useAuth();
   const [uploadPlatform, setUploadPlatform] = useState("instagram");
   const [uploading, setUploading] = useState(false);
@@ -50,7 +52,7 @@ export default function Settings() {
     const newVisibility = visibility === "public" ? "private" : "public";
     setVisibilitySaving(true);
     try {
-      await api.put("/api/v1/users/me/visibility", { visibility: newVisibility });
+      await api.put("/api/v1/auth/me/visibility", { visibility: newVisibility });
       setVisibility(newVisibility);
     } catch {
       // revert on failure

@@ -8,6 +8,7 @@ import {
   ChevronRight, RefreshCw, Share2
 } from "lucide-react";
 import Navbar from "@/components/Navbar";
+import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 
 function ScoreGauge({ score, color, label }: { score: number; color: string; label: string }) {
   const pct = (score / 1000) * 100;
@@ -67,6 +68,7 @@ const PLATFORM_LABELS: Record<string, string> = {
 };
 
 export default function Dashboard() {
+  useDocumentTitle("Dashboard");
   const { user, logout } = useAuth();
   const [score, setScore] = useState<ScoreData | null>(null);
   const [findings, setFindings] = useState<Finding[]>([]);

@@ -1,8 +1,11 @@
 import { Link } from "react-router-dom";
 import { CheckCircle, Users } from "lucide-react";
 import Navbar from "@/components/Navbar";
+import Footer from "@/components/Footer";
+import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 
 export default function Pricing() {
+  useDocumentTitle("Pricing");
   const navLinks = [
     { to: "/search", label: "Search" },
     { to: "/pricing", label: "Pricing" },
@@ -89,6 +92,8 @@ export default function Pricing() {
           and are not intended as the sole basis for employment, housing, or credit decisions.
         </p>
       </main>
+
+      <Footer />
     </div>
   );
 }

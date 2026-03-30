@@ -1,5 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "@/lib/auth";
+import ErrorBoundary from "@/components/ErrorBoundary";
+import { ToastProvider } from "@/components/Toast";
 import Landing from "@/pages/Landing";
 import Login from "@/pages/Login";
 import Register from "@/pages/Register";
@@ -16,6 +18,7 @@ import ForgotPassword from "@/pages/ForgotPassword";
 import DisputeForm from "@/pages/DisputeForm";
 import ScorecardPage from "@/pages/Scorecard";
 import FindingDetail from "@/pages/FindingDetail";
+import NotFound from "@/pages/NotFound";
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -45,8 +48,10 @@ function PublicOnlyRoute({ children }: { children: React.ReactNode }) {
 
 function App() {
   return (
+    <ErrorBoundary>
     <BrowserRouter>
       <AuthProvider>
+      <ToastProvider>
         <Routes>
           {/* Public routes */}
           <Route path="/" element={<PublicOnlyRoute><Landing /></PublicOnlyRoute>} />
@@ -69,10 +74,12 @@ function App() {
           <Route path="/employer" element={<ProtectedRoute><EmployerSearch /></ProtectedRoute>} />
 
           {/* Catch-all */}
-          <Route path="*" element={<Navigate to="/" replace />} />
+          <Route path="*" element={<NotFound />} />
         </Routes>
+      </ToastProvider>
       </AuthProvider>
     </BrowserRouter>
+    </ErrorBoundary>
   );
 }
 

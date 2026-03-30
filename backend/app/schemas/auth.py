@@ -53,5 +53,11 @@ class ResetPasswordRequest(BaseModel):
     new_password: str = Field(min_length=8, max_length=128)
 
 
+class UpdateProfileRequest(BaseModel):
+    display_name: Optional[str] = Field(None, max_length=100)
+    profile_visibility: Optional[str] = Field(None, pattern="^(public|private)$")
+    full_name: Optional[str] = Field(None, min_length=1, max_length=255)
+
+
 class MessageResponse(BaseModel):
     message: str

@@ -4,6 +4,7 @@ import { useAuth } from "@/lib/auth";
 import { api, Finding } from "@/lib/api";
 import { Flag, ArrowLeft, AlertTriangle, Shield, Send } from "lucide-react";
 import Navbar from "@/components/Navbar";
+import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 
 const SEVERITY_COLORS: Record<string, string> = {
   critical: "bg-red-500/10 text-red-400 border-red-500/20",
@@ -14,6 +15,7 @@ const SEVERITY_COLORS: Record<string, string> = {
 };
 
 export default function DisputeForm() {
+  useDocumentTitle("Dispute Finding");
   const { id } = useParams<{ id: string }>();
   const { user, logout } = useAuth();
   const [finding, setFinding] = useState<Finding | null>(null);

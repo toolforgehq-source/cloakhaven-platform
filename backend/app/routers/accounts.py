@@ -18,10 +18,6 @@ from app.config import settings
 router = APIRouter(prefix="/api/v1/accounts", tags=["accounts"])
 
 
-class SocialAccountResponse:
-    pass
-
-
 from pydantic import BaseModel
 from typing import Optional
 

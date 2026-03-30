@@ -4,8 +4,10 @@ import { useAuth } from "@/lib/auth";
 import { api, PublicProfile, EmployerSearchHistoryItem } from "@/lib/api";
 import { Search, Building2, User, Shield, Lock, Clock } from "lucide-react";
 import Navbar from "@/components/Navbar";
+import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 
 export default function EmployerSearch() {
+  useDocumentTitle("Employer Search");
   const { user, logout } = useAuth();
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<PublicProfile[]>([]);

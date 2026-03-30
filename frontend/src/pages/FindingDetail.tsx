@@ -4,6 +4,7 @@ import { useAuth } from "@/lib/auth";
 import { api, Finding } from "@/lib/api";
 import { ArrowLeft, ExternalLink, Flag, Calendar, Users, AlertTriangle, Shield } from "lucide-react";
 import Navbar from "@/components/Navbar";
+import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 
 const SEVERITY_COLORS: Record<string, string> = {
   critical: "bg-red-500/10 text-red-400 border-red-500/20",
@@ -14,6 +15,7 @@ const SEVERITY_COLORS: Record<string, string> = {
 };
 
 export default function FindingDetail() {
+  useDocumentTitle("Finding Detail");
   const { id } = useParams<{ id: string }>();
   const { user, logout } = useAuth();
   const [finding, setFinding] = useState<Finding | null>(null);
@@ -116,7 +118,7 @@ export default function FindingDetail() {
             )}
 
             {/* Details grid */}
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="bg-slate-900 border border-slate-800 rounded-xl p-5">
                 <div className="flex items-center gap-2 mb-2">
                   <Shield className="w-4 h-4 text-indigo-400" />

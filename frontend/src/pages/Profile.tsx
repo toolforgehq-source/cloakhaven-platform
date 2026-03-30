@@ -3,8 +3,11 @@ import { useParams, Link } from "react-router-dom";
 import { api, PublicProfile, Scorecard } from "@/lib/api";
 import { User, Shield, AlertTriangle } from "lucide-react";
 import Navbar from "@/components/Navbar";
+import Footer from "@/components/Footer";
+import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 
 export default function Profile() {
+  useDocumentTitle("Profile");
   const { username } = useParams<{ username: string }>();
   const [profile, setProfile] = useState<PublicProfile | null>(null);
   const [scorecard, setScorecard] = useState<Scorecard | null>(null);
@@ -211,6 +214,8 @@ export default function Profile() {
         </div>
       </div>
       </main>
+
+      <Footer />
     </div>
   );
 }

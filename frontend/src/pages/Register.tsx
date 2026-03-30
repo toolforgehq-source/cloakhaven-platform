@@ -1,6 +1,7 @@
 import { useState, useMemo } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "@/lib/auth";
+import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 
 function getPasswordStrength(password: string): { level: number; label: string; color: string } {
   if (!password) return { level: 0, label: "", color: "" };
@@ -18,6 +19,7 @@ function getPasswordStrength(password: string): { level: number; label: string; 
 }
 
 export default function Register() {
+  useDocumentTitle("Create Account");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");

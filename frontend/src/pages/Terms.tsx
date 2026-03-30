@@ -1,8 +1,11 @@
 import { Link } from "react-router-dom";
 import { FileText } from "lucide-react";
 import Navbar from "@/components/Navbar";
+import Footer from "@/components/Footer";
+import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 
 export default function Terms() {
+  useDocumentTitle("Terms of Service");
   return (
     <div className="min-h-screen bg-slate-950">
       <Navbar
@@ -160,15 +163,7 @@ export default function Terms() {
         </div>
       </main>
 
-      <footer className="border-t border-slate-800 py-8 mt-12">
-        <div className="max-w-3xl mx-auto px-4 text-center text-sm text-slate-500">
-          <p>&copy; 2026 Cloak Haven. All rights reserved.</p>
-          <div className="flex items-center justify-center gap-4 mt-2">
-            <Link to="/privacy" className="hover:text-white transition">Privacy Policy</Link>
-            <Link to="/terms" className="text-indigo-400 hover:underline">Terms of Service</Link>
-          </div>
-        </div>
-      </footer>
+      <Footer />
     </div>
   );
 }

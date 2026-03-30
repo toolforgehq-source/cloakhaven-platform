@@ -1,14 +1,18 @@
 import os
+import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.database import init_db
 from app.routers import auth, score, findings, disputes, accounts, public, payments, employer
+
+logger = logging.getLogger("cloakhaven")
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
 STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
 
@@ -21,7 +25,7 @@ async def lifespan(application: FastAPI):
 
 app = FastAPI(
     title="Cloak Haven API",
-    description="Online reputation scoring platform — like FICO for your digital identity",
+    description="The global standard for digital reputation — online reputation scoring platform",
     version="1.0.0",
     lifespan=lifespan,
 )
@@ -45,6 +49,16 @@ app.include_router(accounts.router)
 app.include_router(public.router)
 app.include_router(payments.router)
 app.include_router(employer.router)
+
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    """Catch-all handler so unhandled errors return JSON, not HTML."""
+    logger.error("Unhandled error on %s %s: %s", request.method, request.url.path, exc, exc_info=True)
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "An internal error occurred. Please try again later."},
+    )
 
 
 @app.get("/healthz")
