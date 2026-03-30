@@ -6,7 +6,6 @@ Processes results through the content classifier to create findings.
 """
 
 import uuid
-from datetime import datetime
 from typing import Optional
 import httpx
 
@@ -15,7 +14,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.models.finding import Finding
 from app.services.content_classifier import classify_web_result
-from app.services.scoring_engine import CATEGORY_WEIGHTS
 
 
 GOOGLE_SEARCH_BASE = "https://www.googleapis.com/customsearch/v1"

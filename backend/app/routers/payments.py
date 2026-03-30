@@ -8,7 +8,6 @@ from typing import Optional
 
 from app.database import get_db
 from app.models.user import User
-from app.schemas.auth import MessageResponse
 from app.middleware.auth import get_current_user
 from app.config import settings
 

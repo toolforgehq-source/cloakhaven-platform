@@ -7,7 +7,6 @@ then processes them through the content classifier to create findings.
 
 import uuid
 from datetime import datetime
-from typing import Optional
 import httpx
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -17,7 +16,6 @@ from app.config import settings
 from app.models.finding import Finding
 from app.models.social_account import SocialAccount
 from app.services.content_classifier import classify_tweet
-from app.services.scoring_engine import CATEGORY_WEIGHTS, SEVERITY_MAP
 
 
 TWITTER_API_BASE = "https://api.twitter.com/2"

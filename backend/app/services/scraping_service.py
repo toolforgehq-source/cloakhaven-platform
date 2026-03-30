@@ -11,7 +11,6 @@ using only their name and/or usernames, without requiring API access.
 """
 
 import logging
-import re
 import uuid
 from datetime import datetime
 from typing import Optional

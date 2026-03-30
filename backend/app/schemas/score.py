@@ -3,7 +3,6 @@
 from pydantic import BaseModel
 from typing import Optional
 from datetime import datetime
-import uuid
 
 
 class ScoreResponse(BaseModel):

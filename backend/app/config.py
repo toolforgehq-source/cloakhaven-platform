@@ -2,7 +2,6 @@ import os
 import secrets
 
 from pydantic_settings import BaseSettings
-from typing import Optional
 
 # Use persistent volume path on Fly.io, local file otherwise
 _default_db_path = "/data/app.db" if os.path.isdir("/data") else "./cloakhaven.db"
@@ -40,6 +39,18 @@ class Settings(BaseSettings):
     # Google Custom Search
     GOOGLE_API_KEY: str = ""
     GOOGLE_SEARCH_ENGINE_ID: str = ""
+
+    # Reddit API
+    REDDIT_CLIENT_ID: str = ""
+    REDDIT_CLIENT_SECRET: str = ""
+    REDDIT_USER_AGENT: str = "CloakHaven/1.0"
+
+    # YouTube Data API
+    YOUTUBE_API_KEY: str = ""
+
+    # Data Enrichment APIs
+    PROXYCURL_API_KEY: str = ""
+    PEOPLEDATALABS_API_KEY: str = ""
 
     # AI/LLM for content classification
     OPENAI_API_KEY: str = ""

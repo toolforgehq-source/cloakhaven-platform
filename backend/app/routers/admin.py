@@ -2,7 +2,7 @@
 
 import uuid
 from datetime import datetime
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, case, desc
 from pydantic import BaseModel
@@ -107,7 +107,7 @@ async def get_admin_stats(
     """Get platform-wide statistics for the admin dashboard."""
     total_users = (await db.execute(select(func.count(User.id)))).scalar() or 0
     verified_users = (await db.execute(
-        select(func.count(User.id)).where(User.email_verified == True)
+        select(func.count(User.id)).where(User.email_verified.is_(True))
     )).scalar() or 0
     paying_users = (await db.execute(
         select(func.count(User.id)).where(User.subscription_tier != "free")
