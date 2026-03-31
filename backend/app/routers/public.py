@@ -3,7 +3,7 @@
 import asyncio
 import logging
 import uuid
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, or_
 
@@ -23,6 +23,7 @@ from app.schemas.auth import MessageResponse
 from app.middleware.auth import get_current_user
 from app.services.scoring_engine import get_score_color, get_score_label
 from app.config import settings
+from app.middleware.rate_limit import public_limiter, check_rate_limit, get_client_ip
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +44,7 @@ async def _background_passive_scan(name: str) -> None:
 
 @router.get("/search", response_model=PublicSearchResponse)
 async def search_public_profiles(
+    request: Request,
     q: str = Query(min_length=2, max_length=255),
     background_tasks: BackgroundTasks = BackgroundTasks(),
     db: AsyncSession = Depends(get_db),
@@ -54,6 +56,7 @@ async def search_public_profiles(
     background passive scan and returns an empty result with scan_pending=true.
     The caller should poll GET /api/v1/scan/lookup/{name} to check when the scan completes.
     """
+    check_rate_limit(get_client_ip(request), public_limiter)
     result = await db.execute(
         select(PublicProfile).where(
             or_(

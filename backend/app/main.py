@@ -1,4 +1,5 @@
 import os
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -9,8 +10,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.database import init_db
-import asyncio
-from app.routers import auth, score, findings, disputes, accounts, public, payments, employer, admin, compliance, scan
+from app.routers import auth, score, findings, disputes, accounts, public, payments, employer, admin, compliance, scan, partner
 
 logger = logging.getLogger("cloakhaven")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -20,6 +20,8 @@ STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
 
 @asynccontextmanager
 async def lifespan(application: FastAPI):
+    from app.middleware.rate_limit import public_limiter, auth_limiter, partner_limiter, audit_limiter
+
     await init_db()
 
     # Background task: periodic re-scanning of stale profiles
@@ -59,8 +61,18 @@ async def lifespan(application: FastAPI):
                 logger.warning("Stale profile re-scan batch failed: %s", e)
 
     rescan_task = asyncio.create_task(_rescan_stale_profiles())
+
+    # Background task to periodically clean up stale rate limit entries
+    async def _cleanup_rate_limiters():
+        while True:
+            await asyncio.sleep(3600)  # Every hour
+            for limiter in (public_limiter, auth_limiter, partner_limiter, audit_limiter):
+                limiter.cleanup(max_age=7200)
+
+    cleanup_task = asyncio.create_task(_cleanup_rate_limiters())
     yield
     rescan_task.cancel()
+    cleanup_task.cancel()
 
 
 app = FastAPI(
@@ -92,6 +104,7 @@ app.include_router(employer.router)
 app.include_router(admin.router)
 app.include_router(compliance.router)
 app.include_router(scan.router)
+app.include_router(partner.router)
 
 
 @app.exception_handler(Exception)
@@ -107,6 +120,7 @@ async def global_exception_handler(request: Request, exc: Exception):
 @app.get("/healthz")
 async def healthz():
     return {"status": "ok"}
+
 
 
 # Serve frontend static files (if built)

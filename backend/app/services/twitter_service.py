@@ -15,7 +15,7 @@ from sqlalchemy import select
 from app.config import settings
 from app.models.finding import Finding
 from app.models.social_account import SocialAccount
-from app.services.content_classifier import classify_tweet, classify_content_llm
+from app.services.content_classifier import classify_content_llm
 
 
 TWITTER_API_BASE = "https://api.twitter.com/2"

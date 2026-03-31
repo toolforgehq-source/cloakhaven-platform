@@ -14,6 +14,7 @@ from app.models.finding import Finding
 from app.models.dispute import Dispute
 from app.models.score import Score
 from app.models.audit_log import AuditLog
+from app.models.partner_key import PartnerApiKey
 from app.middleware.auth import get_admin_user
 
 
@@ -95,6 +96,26 @@ class SetAdminBody(BaseModel):
 
 class SetTierBody(BaseModel):
     tier: str  # "free", "audit", "subscriber", "employer"
+
+
+class CreatePartnerKeyBody(BaseModel):
+    partner_name: str
+    contact_email: str
+    rate_limit_per_minute: int = 100
+
+
+class PartnerKeyResponse(BaseModel):
+    id: str
+    partner_name: str
+    api_key: str
+    contact_email: str
+    is_active: bool
+    rate_limit_per_minute: int
+    total_requests: int
+    created_at: datetime
+    last_used_at: Optional[datetime]
+
+    model_config = {"from_attributes": True}
 
 
 # ── Dashboard Stats ──────────────────────────────────────────────────────
@@ -384,3 +405,76 @@ async def get_audit_log(
         "page": page,
         "page_size": page_size,
     }
+
+
+# ── Partner Key Management ──────────────────────────────────────────────
+
+@router.get("/partner-keys")
+async def list_partner_keys(
+    _admin: User = Depends(get_admin_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """List all partner API keys."""
+    result = await db.execute(select(PartnerApiKey).order_by(desc(PartnerApiKey.created_at)))
+    keys = result.scalars().all()
+    return {
+        "keys": [
+            {
+                "id": str(k.id),
+                "partner_name": k.partner_name,
+                "api_key": k.api_key[:12] + "..." + k.api_key[-4:],
+                "contact_email": k.contact_email,
+                "is_active": k.is_active,
+                "rate_limit_per_minute": k.rate_limit_per_minute,
+                "total_requests": k.total_requests,
+                "created_at": k.created_at.isoformat(),
+                "last_used_at": k.last_used_at.isoformat() if k.last_used_at else None,
+            }
+            for k in keys
+        ],
+        "total": len(keys),
+    }
+
+
+@router.post("/partner-keys", response_model=PartnerKeyResponse, status_code=201)
+async def create_partner_key(
+    body: CreatePartnerKeyBody,
+    _admin: User = Depends(get_admin_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Create a new partner API key."""
+    key = PartnerApiKey(
+        partner_name=body.partner_name,
+        contact_email=body.contact_email,
+        rate_limit_per_minute=body.rate_limit_per_minute,
+    )
+    db.add(key)
+    await db.commit()
+    await db.refresh(key)
+    return PartnerKeyResponse(
+        id=str(key.id),
+        partner_name=key.partner_name,
+        api_key=key.api_key,
+        contact_email=key.contact_email,
+        is_active=key.is_active,
+        rate_limit_per_minute=key.rate_limit_per_minute,
+        total_requests=key.total_requests,
+        created_at=key.created_at,
+        last_used_at=key.last_used_at,
+    )
+
+
+@router.delete("/partner-keys/{key_id}", response_model=dict)
+async def revoke_partner_key(
+    key_id: uuid.UUID,
+    _admin: User = Depends(get_admin_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Revoke (deactivate) a partner API key."""
+    result = await db.execute(select(PartnerApiKey).where(PartnerApiKey.id == key_id))
+    key = result.scalar_one_or_none()
+    if not key:
+        raise HTTPException(status_code=404, detail="Partner key not found")
+    key.is_active = False
+    await db.commit()
+    return {"message": f"Partner key for '{key.partner_name}' revoked"}

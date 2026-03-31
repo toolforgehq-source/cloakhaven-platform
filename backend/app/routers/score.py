@@ -25,6 +25,7 @@ from app.services.scoring_engine import (
     get_score_label,
 )
 from app.config import settings
+from app.middleware.rate_limit import audit_limiter, check_rate_limit
 
 logger = logging.getLogger(__name__)
 
@@ -108,6 +109,12 @@ async def start_audit(
 
     Each scanner is independent — if one fails, the others continue.
     """
+    # Rate limit: 5 audits per hour per user
+    check_rate_limit(
+        str(current_user.id), audit_limiter,
+        "Audit rate limit exceeded. Please wait before starting another audit.",
+    )
+
     audit_id = str(uuid.uuid4())
     platforms_scanned: list[str] = []
 

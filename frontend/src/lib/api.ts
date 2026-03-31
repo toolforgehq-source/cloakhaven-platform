@@ -173,6 +173,10 @@ class ApiClient {
     return this.delete<{ message: string }>(`/api/v1/accounts/${id}`);
   }
 
+  async linkAccount(platform: string, username: string) {
+    return this.post<SocialAccount>("/api/v1/accounts/link", { platform, username });
+  }
+
   // Public
   async searchPublic(query: string) {
     return this.get<PublicSearchResponse>(`/api/v1/public/search?q=${encodeURIComponent(query)}`);
