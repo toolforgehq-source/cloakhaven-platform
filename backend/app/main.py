@@ -149,6 +149,7 @@ async def _scorecard_og_html(user_id: str) -> HTMLResponse | None:
     except (ValueError, AttributeError):
         return None
 
+    import html as _html
     from app.database import async_session_maker as _asm
     from app.models.user import User as _User
     from app.models.score import Score as _Score
@@ -165,11 +166,11 @@ async def _scorecard_og_html(user_id: str) -> HTMLResponse | None:
             if not sc:
                 return None
 
-        name = user.display_name or user.full_name or "Anonymous"
+        name = _html.escape(user.display_name or user.full_name or "Anonymous")
         score_val = sc.overall_score
         label = get_score_label(score_val)
         url = f"{settings.FRONTEND_URL}/scorecard/{user_id}"
-        title = f"{name}'s Cloak Haven Score: {score_val} ({label})"
+        title = _html.escape(f"{name}'s Cloak Haven Score: {score_val} ({label})")
         desc = "Digital reputation score powered by Cloak Haven — the global standard for online reputation."
 
         # Read the SPA index.html and inject OG tags
