@@ -1,13 +1,11 @@
 """GDPR, FCRA, and compliance endpoints."""
 
-import uuid
-import json
 import logging
-from datetime import datetime, timedelta
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from datetime import datetime
+from fastapi import APIRouter, Depends
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, delete
+from sqlalchemy import select
 
 from app.database import get_db
 from app.models.user import User

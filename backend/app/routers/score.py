@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, desc
 
-from app.database import get_db
+from app.database import get_db, async_session_maker
 from app.models.user import User
 from app.models.score import Score, ScoreHistory
 from app.models.social_account import SocialAccount
@@ -150,6 +150,7 @@ async def start_audit(
             logger.warning(f"Data enrichment failed for user {current_user.id}: {e}")
 
     # ── 2-5. Run all scanners concurrently for performance ──
+    # Each scanner gets its own DB session for safe concurrent writes.
     async def _scan_twitter():
         """Twitter/X API scan."""
         if not settings.TWITTER_BEARER_TOKEN:
@@ -157,13 +158,16 @@ async def start_audit(
         twitter_username = platform_usernames.get("twitter")
         if not twitter_username:
             return
-        try:
-            from app.services.twitter_service import scan_twitter_account
-            await scan_twitter_account(db, current_user.id, twitter_username)
-            platforms_scanned.append("twitter")
-            logger.info(f"Twitter scan complete for user {current_user.id}")
-        except Exception as e:
-            logger.warning(f"Twitter scan failed for user {current_user.id}: {e}")
+        async with async_session_maker() as scan_db:
+            try:
+                from app.services.twitter_service import scan_twitter_account
+                await scan_twitter_account(scan_db, current_user.id, twitter_username)
+                await scan_db.commit()
+                platforms_scanned.append("twitter")
+                logger.info(f"Twitter scan complete for user {current_user.id}")
+            except Exception as e:
+                await scan_db.rollback()
+                logger.warning(f"Twitter scan failed for user {current_user.id}: {e}")
 
     async def _scan_reddit():
         """Reddit API scan."""
@@ -172,13 +176,16 @@ async def start_audit(
         reddit_username = platform_usernames.get("reddit")
         if not reddit_username:
             return
-        try:
-            from app.services.reddit_service import scan_reddit_account
-            await scan_reddit_account(db, current_user.id, reddit_username)
-            platforms_scanned.append("reddit")
-            logger.info(f"Reddit scan complete for user {current_user.id}")
-        except Exception as e:
-            logger.warning(f"Reddit scan failed for user {current_user.id}: {e}")
+        async with async_session_maker() as scan_db:
+            try:
+                from app.services.reddit_service import scan_reddit_account
+                await scan_reddit_account(scan_db, current_user.id, reddit_username)
+                await scan_db.commit()
+                platforms_scanned.append("reddit")
+                logger.info(f"Reddit scan complete for user {current_user.id}")
+            except Exception as e:
+                await scan_db.rollback()
+                logger.warning(f"Reddit scan failed for user {current_user.id}: {e}")
 
     async def _scan_youtube():
         """YouTube Data API scan."""
@@ -188,13 +195,16 @@ async def start_audit(
         search_query = youtube_username or name
         if not search_query:
             return
-        try:
-            from app.services.youtube_service import scan_youtube_channel
-            await scan_youtube_channel(db, current_user.id, search_query)
-            platforms_scanned.append("youtube")
-            logger.info(f"YouTube scan complete for user {current_user.id}")
-        except Exception as e:
-            logger.warning(f"YouTube scan failed for user {current_user.id}: {e}")
+        async with async_session_maker() as scan_db:
+            try:
+                from app.services.youtube_service import scan_youtube_channel
+                await scan_youtube_channel(scan_db, current_user.id, search_query)
+                await scan_db.commit()
+                platforms_scanned.append("youtube")
+                logger.info(f"YouTube scan complete for user {current_user.id}")
+            except Exception as e:
+                await scan_db.rollback()
+                logger.warning(f"YouTube scan failed for user {current_user.id}: {e}")
 
     async def _scan_web():
         """Web Search via SerpAPI (comprehensive web presence)."""
@@ -202,15 +212,18 @@ async def start_audit(
             return
         if not name:
             return
-        try:
-            from app.services.google_service import scan_web_presence
-            await scan_web_presence(db, current_user.id, name, usernames or None)
-            platforms_scanned.append("google")
-            logger.info(f"Web search scan complete for user {current_user.id}")
-        except Exception as e:
-            logger.warning(f"Web search scan failed for user {current_user.id}: {e}")
+        async with async_session_maker() as scan_db:
+            try:
+                from app.services.google_service import scan_web_presence
+                await scan_web_presence(scan_db, current_user.id, name, usernames or None)
+                await scan_db.commit()
+                platforms_scanned.append("google")
+                logger.info(f"Web search scan complete for user {current_user.id}")
+            except Exception as e:
+                await scan_db.rollback()
+                logger.warning(f"Web search scan failed for user {current_user.id}: {e}")
 
-    # Run all scanners concurrently — each is independent
+    # Run all scanners concurrently — each has its own DB session
     await asyncio.gather(
         _scan_twitter(),
         _scan_reddit(),

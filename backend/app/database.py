@@ -37,5 +37,15 @@ async def get_db():
 
 
 async def init_db():
+    # Enable SQLite foreign key enforcement (required for CASCADE deletes)
+    if is_sqlite:
+        from sqlalchemy import event, text
+
+        @event.listens_for(engine.sync_engine, "connect")
+        def _set_sqlite_pragma(dbapi_conn, connection_record):
+            cursor = dbapi_conn.cursor()
+            cursor.execute("PRAGMA foreign_keys=ON")
+            cursor.close()
+
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
