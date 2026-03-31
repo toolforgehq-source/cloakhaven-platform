@@ -146,8 +146,20 @@ Confidence guidelines:
 - 0.5-0.6: Uncertain, could go either way (consider classifying as neutral instead)
 - Below 0.5: You should classify as neutral
 
+Severity scoring (nuanced — not just category-based):
+- For negative categories, provide a severity_score from 1-10:
+  - 10: Extremely severe (e.g., convicted of violent crime, confirmed hate group leader)
+  - 7-9: Very concerning (e.g., DUI arrest, sexual harassment allegation with evidence)
+  - 4-6: Moderately concerning (e.g., public argument, controversial opinion, old misdemeanor)
+  - 1-3: Mildly concerning (e.g., excessive profanity, unprofessional photo)
+- For positive categories, severity_score represents strength:
+  - 10: Major achievement (Nobel prize, Fortune 500 CEO, major humanitarian award)
+  - 7-9: Significant (published author, keynote speaker, patent holder)
+  - 4-6: Moderate (promoted, graduated, volunteered)
+  - 1-3: Minor (tutorial post, small donation, participated in event)
+
 Respond with ONLY a JSON object (no markdown, no code fences):
-{"category": "...", "confidence": 0.0-1.0, "reasoning": "brief explanation"}
+{"category": "...", "confidence": 0.0-1.0, "severity_score": 1-10, "reasoning": "brief explanation"}
 """
 
 
@@ -191,13 +203,19 @@ async def _classify_with_openai(text: str, source: str) -> Optional[Classificati
         base_impact = CATEGORY_WEIGHTS.get(category, 0.0)
         snippet = text[:80] + "..." if len(text) > 80 else text
 
+        # Apply nuanced severity scaling
+        severity_score = int(result.get("severity_score", 5))
+        severity_score = max(1, min(10, severity_score))
+        severity_mult = severity_score / 5.0  # 1=0.2x, 5=1.0x, 10=2.0x
+        adjusted_impact = base_impact * severity_mult
+
         return ClassificationResult(
             category=category,
             severity=severity,
             confidence=confidence,
             title=f"{severity.title()} content detected from {source}",
-            description=f"AI classified as '{category}' ({confidence:.0%} confidence). Snippet: \"{snippet}\"",
-            base_score_impact=base_impact,
+            description=f"AI classified as '{category}' ({confidence:.0%} confidence, severity {severity_score}/10). Snippet: \"{snippet}\"",
+            base_score_impact=adjusted_impact,
         )
     except Exception as e:
         logger.warning(f"OpenAI classification failed: {e}")
@@ -273,13 +291,19 @@ async def _try_anthropic_model(text: str, source: str, model: str) -> Optional[C
         base_impact = CATEGORY_WEIGHTS.get(category, 0.0)
         snippet = text[:80] + "..." if len(text) > 80 else text
 
+        # Apply nuanced severity scaling
+        severity_score = int(result.get("severity_score", 5))
+        severity_score = max(1, min(10, severity_score))
+        severity_mult = severity_score / 5.0  # 1=0.2x, 5=1.0x, 10=2.0x
+        adjusted_impact = base_impact * severity_mult
+
         return ClassificationResult(
             category=category,
             severity=severity,
             confidence=confidence,
             title=f"{severity.title()} content detected from {source}",
-            description=f"AI classified as '{category}' ({confidence:.0%} confidence). Snippet: \"{snippet}\"",
-            base_score_impact=base_impact,
+            description=f"AI classified as '{category}' ({confidence:.0%} confidence, severity {severity_score}/10). Snippet: \"{snippet}\"",
+            base_score_impact=adjusted_impact,
         )
     except json.JSONDecodeError:
         logger.warning(f"Anthropic returned non-JSON response ({model})")

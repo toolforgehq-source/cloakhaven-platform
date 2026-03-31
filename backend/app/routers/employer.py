@@ -1,6 +1,7 @@
 """Employer tier endpoints."""
 
 from datetime import datetime
+import logging
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, or_, func
@@ -19,6 +20,8 @@ from app.schemas.public import (
 )
 from app.middleware.auth import get_employer_user
 from app.services.scoring_engine import get_score_color, get_score_label
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/employer", tags=["employer"])
 
@@ -39,6 +42,22 @@ async def employer_search(
     )
     result = await db.execute(query)
     profile = result.scalars().first()
+
+    if not profile:
+        # No cached profile — trigger a passive scan to create one
+        try:
+            from app.services.passive_scanner import run_passive_scan
+            scan_result = await run_passive_scan(
+                db=db,
+                name=request.name,
+            )
+            await db.commit()
+
+            # Re-query the now-created profile
+            result = await db.execute(query)
+            profile = result.scalars().first()
+        except Exception as e:
+            logger.warning("Passive scan failed during employer search: %s", e)
 
     if not profile:
         raise HTTPException(

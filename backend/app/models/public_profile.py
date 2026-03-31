@@ -22,3 +22,14 @@ class PublicProfile(Base):
     last_scanned_at: Mapped[datetime | None] = mapped_column(DateTime)
     public_findings_summary: Mapped[dict | None] = mapped_column(JSON)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    # --- Passive scan accuracy fields ---
+    identity_confidence: Mapped[float | None] = mapped_column(Float, default=0.0)
+    match_context: Mapped[dict | None] = mapped_column(JSON)
+    identity_match_reasoning: Mapped[str | None] = mapped_column(String(2000))
+    sources_scanned: Mapped[dict | None] = mapped_column(JSON)
+    social_media_score: Mapped[int | None] = mapped_column(Integer)
+    web_presence_score: Mapped[int | None] = mapped_column(Integer)
+    posting_behavior_score: Mapped[int | None] = mapped_column(Integer)
+    total_findings_count: Mapped[int | None] = mapped_column(Integer, default=0)
+    scan_duration_seconds: Mapped[float | None] = mapped_column(Float)

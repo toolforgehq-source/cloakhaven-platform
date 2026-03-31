@@ -1,5 +1,6 @@
 """Public profile and search endpoints."""
 
+import logging
 import uuid
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -22,6 +23,8 @@ from app.middleware.auth import get_current_user
 from app.services.scoring_engine import get_score_color, get_score_label
 from app.config import settings
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/api/v1/public", tags=["public"])
 
 
@@ -30,7 +33,10 @@ async def search_public_profiles(
     q: str = Query(min_length=2, max_length=255),
     db: AsyncSession = Depends(get_db),
 ):
-    """Search for a person's public score. Available to anyone."""
+    """Search for a person's public score. Available to anyone.
+
+    If no cached profile is found, triggers a passive scan to create one.
+    """
     result = await db.execute(
         select(PublicProfile).where(
             or_(
@@ -40,6 +46,25 @@ async def search_public_profiles(
         ).limit(20)
     )
     profiles = result.scalars().all()
+
+    # If no profiles found and query looks like a name, trigger passive scan
+    if not profiles and len(q.strip()) >= 3 and " " in q.strip():
+        try:
+            from app.services.passive_scanner import run_passive_scan
+            await run_passive_scan(db=db, name=q.strip())
+            await db.commit()
+            # Re-query after passive scan
+            result = await db.execute(
+                select(PublicProfile).where(
+                    or_(
+                        PublicProfile.lookup_name.ilike(f"%{q}%"),
+                        PublicProfile.lookup_username.ilike(f"%{q}%"),
+                    )
+                ).limit(20)
+            )
+            profiles = result.scalars().all()
+        except Exception as e:
+            logger.warning("Passive scan failed during public search for '%s': %s", q, e)
 
     return PublicSearchResponse(
         results=[
