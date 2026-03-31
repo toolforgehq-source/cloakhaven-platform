@@ -342,8 +342,16 @@ def _calculate_passive_score(findings: list[PassiveFinding]) -> dict:
     total_positive_boost = 0.0  # Track cumulative positive impact for hard cap
     MAX_POSITIVE_BOOST = 150.0  # Hard cap: positives can add at most 150 points (750→900 theoretical max)
 
+    # Categories that are tracked for transparency but don't affect the score
+    # (opinions and controversy aren't misconduct)
+    INFORMATIONAL_ONLY = {"negative_press", "controversial_opinions"}
+
     for finding in findings:
         if finding.category == "neutral":
+            continue
+
+        # Informational-only categories are kept in findings but don't affect score
+        if finding.category in INFORMATIONAL_ONLY:
             continue
 
         base_impact = finding.base_score_impact

@@ -48,12 +48,12 @@ CATEGORY_WEIGHTS: dict[str, float] = {
     "harassment": -75.0,
     "substance_abuse": -60.0,
     "political_extremism": -50.0,
-    "negative_press": -65.0,  # Negative press matters — each article is significant
+    "negative_press": 0.0,  # Informational only — opinions/controversy don't affect score
     # Medium severity
     "profanity": -30.0,
     "unprofessional": -25.0,
     "negative_reviews": -35.0,
-    "controversial_opinions": -20.0,
+    "controversial_opinions": 0.0,  # Informational only — opinions don't affect score
     "misinformation": -25.0,
     # Positive — meaningful but capped by diminishing returns in passive scanner
     "professional_achievement": 25.0,
@@ -75,7 +75,7 @@ SEVERITY_MAP: dict[str, str] = {
     "harassment": "high",
     "substance_abuse": "high",
     "political_extremism": "high",
-    "negative_press": "high",
+    "negative_press": "neutral",  # Tracked but doesn't penalize — opinions aren't misconduct
     "profanity": "medium",
     "unprofessional": "medium",
     "negative_reviews": "medium",
