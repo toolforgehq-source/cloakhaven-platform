@@ -300,7 +300,7 @@ async def _search_youtube_by_name(name: str) -> list[dict]:
 # SCORING ENGINE FOR PASSIVE SCANS
 # ============================================================
 
-BASE_SCORE = 850
+BASE_SCORE = 750  # Start "good" not "excellent" — like FICO where 750 is solid
 
 # Import scoring constants
 from app.services.scoring_engine import (
@@ -339,6 +339,8 @@ def _calculate_passive_score(findings: list[PassiveFinding]) -> dict:
     # Track positive/negative counts for diminishing returns
     positive_count = 0
     negative_count = 0
+    total_positive_boost = 0.0  # Track cumulative positive impact for hard cap
+    MAX_POSITIVE_BOOST = 100.0  # Hard cap: positives can add at most 100 points (750→850 max)
 
     for finding in findings:
         if finding.category == "neutral":
@@ -351,9 +353,9 @@ def _calculate_passive_score(findings: list[PassiveFinding]) -> dict:
         # are more reliable → stronger impact
         corroboration_mult = 1.0
         if finding.corroboration_count >= 3:
-            corroboration_mult = 1.5
+            corroboration_mult = 1.3  # Reduced from 1.5 — corroboration helps but doesn't dominate
         elif finding.corroboration_count >= 2:
-            corroboration_mult = 1.25
+            corroboration_mult = 1.15
 
         # Confidence multiplier with a floor — verified findings always count
         # Floor of 0.5 prevents low identity_confidence from discounting verified results
@@ -362,27 +364,42 @@ def _calculate_passive_score(findings: list[PassiveFinding]) -> dict:
         else:
             confidence_mult = max(finding.confidence, 0.4)
 
-        # Diminishing returns — the 20th positive finding counts less than the 1st
+        # Aggressive diminishing returns — like FICO, extra positive data helps less and less
+        # The 1st-3rd positive findings matter most, after that it tapers fast
         if is_positive:
             positive_count += 1
-            if positive_count > 20:
-                diminishing = 0.3
+            if positive_count > 15:
+                diminishing = 0.1  # Almost nothing — you've already proven yourself
             elif positive_count > 10:
-                diminishing = 0.5
+                diminishing = 0.2
             elif positive_count > 5:
-                diminishing = 0.7
+                diminishing = 0.35
+            elif positive_count > 3:
+                diminishing = 0.6
             else:
                 diminishing = 1.0
         else:
+            # Negatives diminish slower — each scandal matters
             negative_count += 1
             if negative_count > 15:
                 diminishing = 0.4
             elif negative_count > 8:
                 diminishing = 0.6
+            elif negative_count > 3:
+                diminishing = 0.8
             else:
                 diminishing = 1.0
 
         final_impact = base_impact * corroboration_mult * confidence_mult * diminishing
+
+        # Hard cap on positive boost — prevents scores from going above ~850
+        if is_positive:
+            remaining_positive_budget = MAX_POSITIVE_BOOST - total_positive_boost
+            if remaining_positive_budget <= 0:
+                final_impact = 0.0
+            elif final_impact > remaining_positive_budget:
+                final_impact = remaining_positive_budget
+            total_positive_boost += final_impact
 
         # Apply virality modifier
         v_mod = virality_modifier(finding.engagement_count)
