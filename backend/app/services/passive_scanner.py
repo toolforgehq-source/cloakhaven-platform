@@ -323,16 +323,29 @@ def _calculate_passive_score(findings: list[PassiveFinding]) -> dict:
     """
     Calculate score from passive findings.
     Returns dict with overall_score, component scores, and breakdown.
+
+    Scoring philosophy:
+    - Base score is 850 (like FICO, you start strong)
+    - Positive findings raise the score (capped via diminishing returns)
+    - Negative findings lower the score (proportional to severity)
+    - Confidence multiplier has a floor of 0.5 for verified findings
+    - Court records impact is scaled by category (civil vs criminal)
+    - Corroboration from 3+ sources amplifies impact
     """
     social_impact = 0.0
     web_impact = 0.0
     behavior_impact = 0.0
+
+    # Track positive/negative counts for diminishing returns
+    positive_count = 0
+    negative_count = 0
 
     for finding in findings:
         if finding.category == "neutral":
             continue
 
         base_impact = finding.base_score_impact
+        is_positive = base_impact > 0
 
         # Apply corroboration multiplier: findings confirmed by multiple sources
         # are more reliable → stronger impact
@@ -342,10 +355,34 @@ def _calculate_passive_score(findings: list[PassiveFinding]) -> dict:
         elif finding.corroboration_count >= 2:
             corroboration_mult = 1.25
 
-        # Apply disambiguation confidence: lower confidence → lower impact
-        confidence_mult = finding.confidence if finding.disambiguation_verified else 0.7
+        # Confidence multiplier with a floor — verified findings always count
+        # Floor of 0.5 prevents low identity_confidence from discounting verified results
+        if finding.disambiguation_verified:
+            confidence_mult = max(finding.confidence, 0.5)
+        else:
+            confidence_mult = max(finding.confidence, 0.4)
 
-        final_impact = base_impact * corroboration_mult * confidence_mult
+        # Diminishing returns — the 20th positive finding counts less than the 1st
+        if is_positive:
+            positive_count += 1
+            if positive_count > 20:
+                diminishing = 0.3
+            elif positive_count > 10:
+                diminishing = 0.5
+            elif positive_count > 5:
+                diminishing = 0.7
+            else:
+                diminishing = 1.0
+        else:
+            negative_count += 1
+            if negative_count > 15:
+                diminishing = 0.4
+            elif negative_count > 8:
+                diminishing = 0.6
+            else:
+                diminishing = 1.0
+
+        final_impact = base_impact * corroboration_mult * confidence_mult * diminishing
 
         # Apply virality modifier
         v_mod = virality_modifier(finding.engagement_count)
@@ -387,16 +424,23 @@ def _calculate_passive_accuracy(
     Enhanced accuracy formula for passive scans.
 
     accuracy = (
-        data_sources_scanned / total_possible × 60%
-        + identity_confidence × 25%
-        + findings_depth × 15%
+        data_sources_scanned / total_possible × 45%
+        + identity_confidence × 20%
+        + findings_depth × 25%
+        + classification_quality × 10%
     )
+
+    Rebalanced: identity_confidence reduced to 20% (was 25%) because
+    PDL enrichment often fails for public figures. Findings depth
+    increased to 25% (was 15%) because having lots of data points
+    is a strong accuracy signal regardless of PDL match.
     """
     # Breadth: how many source types did we scan?
     possible_sources = {
         "serpapi_web", "serpapi_news", "twitter_mentions",
         "youtube_search", "enrichment", "courtlistener",
         "sec_edgar", "uspto", "semantic_scholar", "opencorporates",
+        "github", "wikipedia",
     }
     scanned_set = set(sources_scanned)
     breadth_score = len(scanned_set & possible_sources) / len(possible_sources) * 100
@@ -406,17 +450,24 @@ def _calculate_passive_accuracy(
         depth_score = 0.0
     elif findings_count <= 5:
         depth_score = 30.0
-    elif findings_count <= 20:
-        depth_score = 60.0
+    elif findings_count <= 15:
+        depth_score = 55.0
+    elif findings_count <= 30:
+        depth_score = 75.0
     elif findings_count <= 50:
-        depth_score = 80.0
+        depth_score = 90.0
     else:
         depth_score = 100.0
 
+    # Classification quality: having LLM classification available
+    # gives a 10% accuracy bonus (rule-based alone is less reliable)
+    classification_quality = 80.0 if settings.ANTHROPIC_API_KEY or settings.OPENAI_API_KEY else 40.0
+
     accuracy = (
-        breadth_score * 0.60
-        + (identity_confidence * 100) * 0.25
-        + depth_score * 0.15
+        breadth_score * 0.45
+        + (identity_confidence * 100) * 0.20
+        + depth_score * 0.25
+        + classification_quality * 0.10
     )
     return min(accuracy, 100.0)
 
@@ -548,6 +599,15 @@ async def run_passive_scan(
         except Exception as e:
             logger.warning("Enrichment failed for '%s': %s", name, e)
 
+    # Boost identity_confidence for unique (non-common) names even without PDL
+    # If the name is unique enough, web results are very likely about the right person
+    if identity_confidence <= 0.3 and not _is_common_name(name):
+        identity_confidence = 0.55  # Unique name = moderate baseline confidence
+    elif identity_confidence <= 0.3 and _is_common_name(name):
+        # Common name with context clues can get a small boost
+        if context.get("company") or context.get("job_title"):
+            identity_confidence = 0.4
+
     # ── 2-5. Run all data sources CONCURRENTLY for speed ──
     web_task = asyncio.create_task(_expanded_web_search(name, context))
     twitter_task = asyncio.create_task(_search_twitter_mentions(name))
@@ -626,7 +686,25 @@ async def run_passive_scan(
             is_verified = True
             confidence = disambig.confidence
         else:
-            is_verified = True  # High identity confidence, no disambiguation needed
+            # No disambiguation needed (unique name or high identity confidence)
+            # Boost confidence based on contextual signals
+            is_verified = True
+            name_lower = name.lower()
+            title_lower = title.lower()
+            snippet_lower = snippet.lower()
+            combined_lower = f"{title_lower} {snippet_lower}"
+
+            # If full name appears in title, strong signal it's about them
+            if name_lower in title_lower:
+                confidence = max(identity_confidence, 0.75)
+                # Even higher if company/context also matches
+                company = context.get("company", "").lower()
+                if company and company in combined_lower:
+                    confidence = max(confidence, 0.85)
+            elif name_lower in snippet_lower:
+                confidence = max(identity_confidence, 0.6)
+            else:
+                confidence = max(identity_confidence, 0.5)
 
         # Classify content — rule-based first (instant), LLM only for ambiguous
         from app.services.google_service import _detect_source
@@ -753,7 +831,7 @@ async def run_passive_scan(
             disambiguation_verified=True,
         )
 
-    # Process public records
+    # Process public records with smarter severity scaling
     def _process_public_record(record: PublicRecord) -> PassiveFinding:
         # Map record types to finding categories
         category_map = {
@@ -766,6 +844,27 @@ async def run_passive_scan(
         category = category_map.get(record.record_type, "neutral")
         severity = SEVERITY_MAP.get(category, "neutral")
         base_impact = CATEGORY_WEIGHTS.get(category, 0.0)
+
+        # Scale court record impact by type: civil suits are far less concerning
+        # than criminal cases. Most CEO/executive records are civil (antitrust,
+        # shareholder suits, patent disputes) — not personal misconduct.
+        if category == "court_records":
+            desc_lower = record.description.lower()
+            title_lower = record.title.lower()
+            combined = f"{title_lower} {desc_lower}"
+
+            # Criminal indicators = full weight
+            criminal_indicators = [
+                "criminal", "felony", "misdemeanor", "arrest", "indictment",
+                "guilty", "convicted", "sentencing", "fraud charge", "dui",
+            ]
+            is_criminal = any(ind in combined for ind in criminal_indicators)
+
+            if is_criminal:
+                base_impact = base_impact * 1.5  # Criminal = heavier
+            else:
+                # Civil suits, antitrust, patent disputes, shareholder actions
+                base_impact = base_impact * 0.4  # Civil = much lighter
 
         return PassiveFinding(
             source=record.source,

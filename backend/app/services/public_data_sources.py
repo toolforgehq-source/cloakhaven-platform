@@ -346,6 +346,127 @@ async def search_business_registrations(name: str, max_results: int = 5) -> list
 
 
 # ============================================================
+# GITHUB — Public Profile + Repos (free, no API key needed)
+# https://api.github.com/search/users
+# ============================================================
+
+async def search_github_profile(name: str, max_results: int = 5) -> list[PublicRecord]:
+    """Search GitHub for public profiles and notable repos matching a person's name."""
+    records: list[PublicRecord] = []
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            # Search for users matching the name
+            response = await client.get(
+                "https://api.github.com/search/users",
+                params={"q": f"{name} in:fullname", "per_page": 3},
+                headers={
+                    "User-Agent": "CloakHaven/1.0",
+                    "Accept": "application/vnd.github.v3+json",
+                },
+            )
+
+        if response.status_code != 200:
+            logger.warning("GitHub API error: %d", response.status_code)
+            return records
+
+        data = response.json()
+        users = data.get("items", [])
+
+        for user in users[:max_results]:
+            login = user.get("login", "")
+            profile_url = user.get("html_url", "")
+            avatar = user.get("avatar_url", "")
+
+            # Get user details for more info
+            try:
+                async with httpx.AsyncClient(timeout=10.0) as client:
+                    detail_resp = await client.get(
+                        f"https://api.github.com/users/{login}",
+                        headers={
+                            "User-Agent": "CloakHaven/1.0",
+                            "Accept": "application/vnd.github.v3+json",
+                        },
+                    )
+                if detail_resp.status_code == 200:
+                    detail = detail_resp.json()
+                    full_name = detail.get("name", "") or ""
+                    bio = detail.get("bio", "") or ""
+                    public_repos = detail.get("public_repos", 0)
+                    followers = detail.get("followers", 0)
+                    company = detail.get("company", "") or ""
+
+                    # Only include if the GitHub name reasonably matches
+                    name_lower = name.lower()
+                    full_name_lower = full_name.lower()
+                    if name_lower not in full_name_lower and full_name_lower not in name_lower:
+                        continue
+
+                    desc = f"GitHub: {full_name}. {bio[:200]}. {public_repos} repos, {followers} followers."
+                    if company:
+                        desc += f" Company: {company}."
+
+                    # More followers/repos = higher relevance
+                    relevance = min(0.5 + (followers / 500) + (public_repos / 200), 1.0)
+
+                    records.append(PublicRecord(
+                        source="github",
+                        record_type="business",  # Maps to professional_achievement
+                        title=f"GitHub profile: {full_name} (@{login})"[:300],
+                        description=desc[:500],
+                        url=profile_url,
+                        relevance_score=relevance,
+                    ))
+            except Exception:
+                continue
+
+    except Exception as e:
+        logger.warning("GitHub search failed for '%s': %s", name, e)
+
+    return records
+
+
+# ============================================================
+# WIKIPEDIA — Quick existence check (free, no API key needed)
+# https://en.wikipedia.org/api/rest_v1/
+# ============================================================
+
+async def search_wikipedia(name: str) -> list[PublicRecord]:
+    """Check if a person has a Wikipedia page — strong signal of notability."""
+    records: list[PublicRecord] = []
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.get(
+                "https://en.wikipedia.org/api/rest_v1/page/summary/" + name.replace(" ", "_"),
+                headers={"User-Agent": "CloakHaven/1.0"},
+            )
+
+        if response.status_code != 200:
+            return records
+
+        data = response.json()
+        title = data.get("title", "")
+        extract = data.get("extract", "")
+        page_url = data.get("content_urls", {}).get("desktop", {}).get("page", "")
+        page_type = data.get("type", "")
+
+        # Only include if it's a standard article (not disambiguation, etc.)
+        if page_type == "standard" and extract:
+            records.append(PublicRecord(
+                source="wikipedia",
+                record_type="publication",
+                title=f"Wikipedia: {title}"[:300],
+                description=extract[:500],
+                url=page_url or f"https://en.wikipedia.org/wiki/{name.replace(' ', '_')}",
+                relevance_score=0.9,  # Wikipedia page = very high relevance
+            ))
+
+    except Exception as e:
+        logger.warning("Wikipedia search failed for '%s': %s", name, e)
+
+    return records
+
+
+# ============================================================
 # UNIFIED SEARCH — Run all public data sources concurrently
 # ============================================================
 
@@ -360,11 +481,16 @@ async def search_all_public_records(name: str) -> list[PublicRecord]:
         search_patents(name),
         search_publications(name),
         search_business_registrations(name),
+        search_github_profile(name),
+        search_wikipedia(name),
         return_exceptions=True,
     )
 
     all_records: list[PublicRecord] = []
-    source_names = ["CourtListener", "SEC EDGAR", "USPTO", "Semantic Scholar", "OpenCorporates"]
+    source_names = [
+        "CourtListener", "SEC EDGAR", "USPTO", "Semantic Scholar",
+        "OpenCorporates", "GitHub", "Wikipedia",
+    ]
 
     for i, result in enumerate(results):
         if isinstance(result, Exception):

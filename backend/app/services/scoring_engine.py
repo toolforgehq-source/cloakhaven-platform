@@ -37,30 +37,30 @@ from app.models.user import User
 # ============================================================
 
 CATEGORY_WEIGHTS: dict[str, float] = {
-    # Critical severity
+    # Critical severity — genuinely harmful behavior
     "hate_speech": -150.0,
     "threats": -140.0,
     "illegal_activity": -130.0,
-    "court_records": -120.0,
+    "court_records": -60.0,  # Reduced: most court records are civil suits, not crimes
     "explicit_content": -110.0,
     # High severity
     "discriminatory": -80.0,
     "harassment": -75.0,
     "substance_abuse": -60.0,
     "political_extremism": -50.0,
-    "negative_press": -70.0,
+    "negative_press": -50.0,  # Reduced: negative press varies widely in severity
     # Medium severity
     "profanity": -30.0,
     "unprofessional": -25.0,
     "negative_reviews": -35.0,
     "controversial_opinions": -20.0,
     "misinformation": -25.0,
-    # Positive
-    "professional_achievement": 20.0,
-    "community_involvement": 15.0,
-    "positive_press": 25.0,
-    "constructive_content": 10.0,
-    "verified_credentials": 15.0,
+    # Positive — boosted to balance against negatives
+    "professional_achievement": 35.0,  # Was 20
+    "community_involvement": 25.0,  # Was 15
+    "positive_press": 40.0,  # Was 25
+    "constructive_content": 20.0,  # Was 10
+    "verified_credentials": 25.0,  # Was 15
     # Neutral — not scored
     "neutral": 0.0,
 }

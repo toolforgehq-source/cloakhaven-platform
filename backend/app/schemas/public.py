@@ -28,6 +28,7 @@ class PublicProfileResponse(BaseModel):
 class PublicSearchResponse(BaseModel):
     results: list[PublicProfileResponse]
     total: int
+    scan_pending: bool = False  # True when a background scan was triggered for a new name
 
 
 class ClaimProfileRequest(BaseModel):
