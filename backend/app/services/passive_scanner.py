@@ -181,25 +181,33 @@ async def _expanded_web_search(name: str, context: dict) -> list[dict]:
     if company:
         news_queries.append(f'"{name}" {company}')
 
-    # Execute all queries (sequential to respect rate limits)
+    # Execute all queries concurrently (batched to respect rate limits)
     all_results: list[dict] = []
     seen_urls: set[str] = set()
+    sem = asyncio.Semaphore(5)  # Max 5 concurrent SerpAPI calls
 
-    for query in queries_google:
-        results = await _serpapi_search(query, engine="google", num=10)
-        for r in results:
-            url = r.get("link", "")
-            if url and url not in seen_urls:
-                seen_urls.add(url)
-                all_results.append(r)
+    async def _run_google(query: str) -> list[dict]:
+        async with sem:
+            return await _serpapi_search(query, engine="google", num=10)
 
-    for query in news_queries:
-        results = await _serpapi_search(query, engine="google_news", num=10)
-        for r in results:
-            url = r.get("link", "")
-            if url and url not in seen_urls:
-                seen_urls.add(url)
+    async def _run_news(query: str) -> list[dict]:
+        async with sem:
+            results = await _serpapi_search(query, engine="google_news", num=10)
+            for r in results:
                 r["_is_news"] = True
+            return results
+
+    tasks = [_run_google(q) for q in queries_google] + [_run_news(q) for q in news_queries]
+    batch_results = await asyncio.gather(*tasks, return_exceptions=True)
+
+    for batch in batch_results:
+        if isinstance(batch, Exception):
+            logger.warning("SerpAPI batch error: %s", batch)
+            continue
+        for r in batch:
+            url = r.get("link", "")
+            if url and url not in seen_urls:
+                seen_urls.add(url)
                 all_results.append(r)
 
     return all_results
@@ -548,42 +556,51 @@ async def run_passive_scan(
         except Exception as e:
             logger.warning("Enrichment failed for '%s': %s", name, e)
 
-    # ── 2. Expanded Web Search (SerpAPI) ──
-    web_results = await _expanded_web_search(name, context)
+    # ── 2-5. Run all data sources CONCURRENTLY for speed ──
+    web_task = asyncio.create_task(_expanded_web_search(name, context))
+    twitter_task = asyncio.create_task(_search_twitter_mentions(name))
+    youtube_task = asyncio.create_task(_search_youtube_by_name(name))
+    public_records_task = asyncio.create_task(search_all_public_records(name))
+
+    # Wait for all with a global timeout of 45 seconds
+    try:
+        results = await asyncio.wait_for(
+            asyncio.gather(
+                web_task, twitter_task, youtube_task, public_records_task,
+                return_exceptions=True,
+            ),
+            timeout=45.0,
+        )
+        web_results = results[0] if not isinstance(results[0], Exception) else []
+        twitter_mentions = results[1] if not isinstance(results[1], Exception) else []
+        youtube_results = results[2] if not isinstance(results[2], Exception) else []
+        public_records = results[3] if not isinstance(results[3], Exception) else []
+
+        for i, label in enumerate(["web", "twitter", "youtube", "public_records"]):
+            if isinstance(results[i], Exception):
+                logger.warning("Data source '%s' failed: %s", label, results[i])
+    except asyncio.TimeoutError:
+        logger.warning("Passive scan data gathering timed out after 45s for '%s'", name)
+        web_results = web_task.result() if web_task.done() and not web_task.cancelled() else []
+        twitter_mentions = twitter_task.result() if twitter_task.done() and not twitter_task.cancelled() else []
+        youtube_results = youtube_task.result() if youtube_task.done() and not youtube_task.cancelled() else []
+        public_records = public_records_task.result() if public_records_task.done() and not public_records_task.cancelled() else []
+        # Cancel anything still running
+        for t in [web_task, twitter_task, youtube_task, public_records_task]:
+            if not t.done():
+                t.cancel()
+
     if web_results:
         sources_scanned.append("serpapi_web")
-        # Check if any are news results
         if any(r.get("_is_news") for r in web_results):
             sources_scanned.append("serpapi_news")
-
-    # ── 3. Twitter Mention Search ──
-    twitter_mentions = await _search_twitter_mentions(name)
     if twitter_mentions:
         sources_scanned.append("twitter_mentions")
-
-    # ── 4. YouTube Name Search ──
-    youtube_results = await _search_youtube_by_name(name)
     if youtube_results:
         sources_scanned.append("youtube_search")
-
-    # ── 5. Public Records Search ──
-    public_records = await search_all_public_records(name)
     for record in public_records:
-        if record.source == "courtlistener":
-            if "courtlistener" not in sources_scanned:
-                sources_scanned.append("courtlistener")
-        elif record.source == "sec_edgar":
-            if "sec_edgar" not in sources_scanned:
-                sources_scanned.append("sec_edgar")
-        elif record.source == "uspto":
-            if "uspto" not in sources_scanned:
-                sources_scanned.append("uspto")
-        elif record.source == "semantic_scholar":
-            if "semantic_scholar" not in sources_scanned:
-                sources_scanned.append("semantic_scholar")
-        elif record.source == "opencorporates":
-            if "opencorporates" not in sources_scanned:
-                sources_scanned.append("opencorporates")
+        if record.source not in sources_scanned:
+            sources_scanned.append(record.source)
 
     # ── 6. Classify + Disambiguate all results ──
     # Process web results
