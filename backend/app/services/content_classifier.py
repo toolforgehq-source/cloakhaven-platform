@@ -206,8 +206,8 @@ async def _classify_with_openai(text: str, source: str) -> Optional[Classificati
 
 # Model preference order — try Sonnet first for better accuracy, fall back to Haiku
 _ANTHROPIC_MODELS = [
-    "claude-3-5-sonnet-20241022",
-    "claude-3-haiku-20240307",
+    "claude-sonnet-4-6",
+    "claude-haiku-4-5",
 ]
 
 
