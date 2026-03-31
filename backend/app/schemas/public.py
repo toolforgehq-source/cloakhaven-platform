@@ -63,6 +63,7 @@ class EmployerReportResponse(BaseModel):
     risk_level: str
     recommendation: str
     searched_at: datetime
+    fcra_disclaimer: Optional[str] = None
 
 
 class EmployerSearchHistoryItem(BaseModel):

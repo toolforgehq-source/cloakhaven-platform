@@ -85,6 +85,8 @@ async def employer_search(
                 risk_level = "critical"
                 recommendation = "Critical risk. Significant concerning content found across multiple platforms."
 
+    from app.routers.compliance import FCRA_DISCLAIMER
+
     return EmployerReportResponse(
         profile=PublicProfileResponse(
             id=profile.id,
@@ -102,6 +104,7 @@ async def employer_search(
         risk_level=risk_level,
         recommendation=recommendation,
         searched_at=datetime.utcnow(),
+        fcra_disclaimer=FCRA_DISCLAIMER,
     )
 
 

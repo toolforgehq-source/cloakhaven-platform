@@ -1,8 +1,10 @@
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 from sqlalchemy import String, DateTime, ForeignKey, Text, Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.database import Base
+
+DISPUTE_SLA_DAYS = 30
 
 
 class Dispute(Base):
@@ -22,6 +24,7 @@ class Dispute(Base):
     status: Mapped[str] = mapped_column(String(20), default="pending")
     reviewer_notes: Mapped[str | None] = mapped_column(Text)
     submitted_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    deadline_at: Mapped[datetime | None] = mapped_column(DateTime)
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime)
 
     # Relationships

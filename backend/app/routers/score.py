@@ -1,12 +1,13 @@
 """Score and audit endpoints."""
 
+import asyncio
 import uuid
 import logging
 from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, desc
 
-from app.database import get_db
+from app.database import get_db, async_session_maker
 from app.models.user import User
 from app.models.score import Score, ScoreHistory
 from app.models.social_account import SocialAccount
@@ -148,53 +149,88 @@ async def start_audit(
         except Exception as e:
             logger.warning(f"Data enrichment failed for user {current_user.id}: {e}")
 
-    # ── 2. Twitter/X API scan ──
-    if settings.TWITTER_BEARER_TOKEN:
+    # ── 2-5. Run all scanners concurrently for performance ──
+    # Each scanner gets its own DB session for safe concurrent writes.
+    async def _scan_twitter():
+        """Twitter/X API scan."""
+        if not settings.TWITTER_BEARER_TOKEN:
+            return
         twitter_username = platform_usernames.get("twitter")
-        if twitter_username:
+        if not twitter_username:
+            return
+        async with async_session_maker() as scan_db:
             try:
                 from app.services.twitter_service import scan_twitter_account
-                await scan_twitter_account(db, current_user.id, twitter_username)
+                await scan_twitter_account(scan_db, current_user.id, twitter_username)
+                await scan_db.commit()
                 platforms_scanned.append("twitter")
                 logger.info(f"Twitter scan complete for user {current_user.id}")
             except Exception as e:
+                await scan_db.rollback()
                 logger.warning(f"Twitter scan failed for user {current_user.id}: {e}")
 
-    # ── 3. Reddit API scan ──
-    if settings.REDDIT_CLIENT_ID and settings.REDDIT_CLIENT_SECRET:
+    async def _scan_reddit():
+        """Reddit API scan."""
+        if not (settings.REDDIT_CLIENT_ID and settings.REDDIT_CLIENT_SECRET):
+            return
         reddit_username = platform_usernames.get("reddit")
-        if reddit_username:
+        if not reddit_username:
+            return
+        async with async_session_maker() as scan_db:
             try:
                 from app.services.reddit_service import scan_reddit_account
-                await scan_reddit_account(db, current_user.id, reddit_username)
+                await scan_reddit_account(scan_db, current_user.id, reddit_username)
+                await scan_db.commit()
                 platforms_scanned.append("reddit")
                 logger.info(f"Reddit scan complete for user {current_user.id}")
             except Exception as e:
+                await scan_db.rollback()
                 logger.warning(f"Reddit scan failed for user {current_user.id}: {e}")
 
-    # ── 4. YouTube Data API scan ──
-    if settings.YOUTUBE_API_KEY:
+    async def _scan_youtube():
+        """YouTube Data API scan."""
+        if not settings.YOUTUBE_API_KEY:
+            return
         youtube_username = platform_usernames.get("youtube")
         search_query = youtube_username or name
-        if search_query:
+        if not search_query:
+            return
+        async with async_session_maker() as scan_db:
             try:
                 from app.services.youtube_service import scan_youtube_channel
-                await scan_youtube_channel(db, current_user.id, search_query)
+                await scan_youtube_channel(scan_db, current_user.id, search_query)
+                await scan_db.commit()
                 platforms_scanned.append("youtube")
                 logger.info(f"YouTube scan complete for user {current_user.id}")
             except Exception as e:
+                await scan_db.rollback()
                 logger.warning(f"YouTube scan failed for user {current_user.id}: {e}")
 
-    # ── 5. Web Search via SerpAPI (web presence) ──
-    if settings.SERPAPI_API_KEY:
-        try:
-            from app.services.google_service import scan_web_presence
-            if name:
-                await scan_web_presence(db, current_user.id, name, usernames or None)
+    async def _scan_web():
+        """Web Search via SerpAPI (comprehensive web presence)."""
+        if not settings.SERPAPI_API_KEY:
+            return
+        if not name:
+            return
+        async with async_session_maker() as scan_db:
+            try:
+                from app.services.google_service import scan_web_presence
+                await scan_web_presence(scan_db, current_user.id, name, usernames or None)
+                await scan_db.commit()
                 platforms_scanned.append("google")
                 logger.info(f"Web search scan complete for user {current_user.id}")
-        except Exception as e:
-            logger.warning(f"Web search scan failed for user {current_user.id}: {e}")
+            except Exception as e:
+                await scan_db.rollback()
+                logger.warning(f"Web search scan failed for user {current_user.id}: {e}")
+
+    # Run all scanners concurrently — each has its own DB session
+    await asyncio.gather(
+        _scan_twitter(),
+        _scan_reddit(),
+        _scan_youtube(),
+        _scan_web(),
+        return_exceptions=True,
+    )
 
     # ── 6. Public profile scraping (fallback for unscanned platforms) ──
     if "twitter" not in platforms_scanned:

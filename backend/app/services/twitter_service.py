@@ -15,7 +15,7 @@ from sqlalchemy import select
 from app.config import settings
 from app.models.finding import Finding
 from app.models.social_account import SocialAccount
-from app.services.content_classifier import classify_tweet
+from app.services.content_classifier import classify_tweet, classify_content_llm
 
 
 TWITTER_API_BASE = "https://api.twitter.com/2"
@@ -131,12 +131,12 @@ async def scan_twitter_account(
             except ValueError:
                 pass
 
-        # Classify the tweet
-        classification = classify_tweet(
+        # Classify the tweet using LLM (falls back to rule-based)
+        classification = await classify_content_llm(
             text=text,
-            retweet_count=retweet_count,
-            like_count=like_count,
-            reply_count=reply_count,
+            source="twitter",
+            url=f"https://twitter.com/{twitter_username}/status/{tweet.get('id', '')}",
+            engagement_count=total_engagement,
         )
 
         # Skip neutral content — no finding needed

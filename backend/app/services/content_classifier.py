@@ -95,39 +95,58 @@ class ClassificationResult:
 # LLM-POWERED CLASSIFICATION
 # ============================================================
 
-LLM_SYSTEM_PROMPT = """You are a content classifier for a digital reputation scoring system.
-Classify the given content into exactly ONE of these categories:
+LLM_SYSTEM_PROMPT = """You are a content classifier for CloakHaven, the global standard for digital reputation scoring.
+You classify content that appears in search results, social media posts, and public records ABOUT a specific person.
 
-NEGATIVE (lowers score):
-- hate_speech: Racial slurs, hate group support, white supremacy
-- threats: Death threats, bomb threats, violence
-- illegal_activity: Drug dealing, fraud, money laundering
-- explicit_content: Nudity, pornography, NSFW material
-- harassment: Stalking, doxxing, cyberbullying
-- discriminatory: Sexism, racism, homophobia, bigotry
-- substance_abuse: Drug use glorification, drunk driving
-- political_extremism: Extremist rhetoric, insurrection support
-- profanity: Excessive swearing (mild)
-- unprofessional: Complaining about work, unprofessional behavior
-- misinformation: Conspiracy theories, anti-vax, fake news
+Classify into exactly ONE category:
+
+CRITICAL NEGATIVE (major score reduction):
+- hate_speech: Person directly using racial slurs, supporting hate groups, white supremacy advocacy
+- threats: Person making death threats, bomb threats, explicit calls for violence
+- illegal_activity: Person involved in drug dealing, fraud, money laundering, theft
+- court_records: Arrest records, criminal charges, lawsuits filed against the person
+- explicit_content: Person sharing nudity, pornography, NSFW material
+
+HIGH NEGATIVE:
+- discriminatory: Person making sexist, racist, homophobic, transphobic, or bigoted statements
+- harassment: Person stalking, doxxing, cyberbullying others
+- substance_abuse: Person glorifying drug use, posting about drunk driving, substance problems
+- political_extremism: Person supporting actual extremist groups, insurrection, terrorism. NOT just having strong political opinions.
+- negative_press: Negative news coverage about the person (scandals, firings, controversies)
+
+MEDIUM NEGATIVE:
+- profanity: Excessive swearing in a professional context
+- unprofessional: Complaining about work, badmouthing employers, inappropriate workplace behavior
+- misinformation: Person spreading proven conspiracy theories, anti-vax content, demonstrably false claims
 
 POSITIVE (raises score):
-- professional_achievement: Promotions, awards, publications, certifications
-- community_involvement: Volunteering, charity, mentoring
-- positive_press: Featured in media, keynote speeches, recognition
-- constructive_content: Tutorials, open source contributions, teaching
+- professional_achievement: Awards, promotions, publications, patents, certifications, graduations
+- community_involvement: Volunteering, charity work, donations, mentoring
+- positive_press: Positive media coverage, keynote speeches, interviews, recognition, company profiles
+- constructive_content: Tutorials, open source contributions, educational content, thought leadership
 
 NEUTRAL (no impact):
-- neutral: Normal everyday content with no reputation impact
+- neutral: Normal content, factual information, general discussion, opinions within normal bounds
 
-IMPORTANT RULES:
-1. Understand CONTEXT and SARCASM. "I'm going to kill this presentation" is neutral/positive, not a threat.
-2. Quotations or reporting on events are usually neutral unless the person is endorsing the content.
-3. Professional criticism or debate is neutral, not harassment.
-4. Humor and jokes should be classified based on their actual content, not surface keywords.
-5. Consider the platform context — a tweet saying "this code is trash" is unprofessional but not harassment.
+CRITICAL CLASSIFICATION RULES:
+1. CONTEXT IS EVERYTHING. "I'm going to kill this presentation" = neutral. An AI safety discussion = neutral. A tech company profile page = positive_press.
+2. NEWS REPORTING about events is neutral UNLESS the person is the subject of negative coverage.
+3. Discussions about AI, technology, future risks, space exploration = neutral or constructive_content. These are NOT political_extremism.
+4. Company/founder profile pages (Forbes, Wikipedia, Tesla, etc.) = positive_press.
+5. Having controversial or strong opinions is NOT political_extremism. Reserve that ONLY for actual extremist group support.
+6. A Wikipedia page about a public figure = positive_press (it means they're notable).
+7. If the content is ambiguous or you're unsure, classify as neutral. False positives are worse than false negatives.
+8. Social media profiles and bios are usually neutral unless they contain explicit problematic content.
+9. Court records, arrest reports, legal filings = court_records (even if the person was found innocent, the record exists).
+10. Satirical or humorous content should be classified based on clear intent, not surface keywords.
 
-Respond with ONLY a JSON object (no markdown, no explanation):
+Confidence guidelines:
+- 0.9-1.0: Very clear, unambiguous classification
+- 0.7-0.8: Confident but some nuance
+- 0.5-0.6: Uncertain, could go either way (consider classifying as neutral instead)
+- Below 0.5: You should classify as neutral
+
+Respond with ONLY a JSON object (no markdown, no code fences):
 {"category": "...", "confidence": 0.0-1.0, "reasoning": "brief explanation"}
 """
 
@@ -185,8 +204,24 @@ async def _classify_with_openai(text: str, source: str) -> Optional[Classificati
         return None
 
 
+# Model preference order — try Sonnet first for better accuracy, fall back to Haiku
+_ANTHROPIC_MODELS = [
+    "claude-sonnet-4-6",
+    "claude-haiku-4-5",
+]
+
+
 async def _classify_with_anthropic(text: str, source: str) -> Optional[ClassificationResult]:
-    """Classify content using Anthropic's Claude API."""
+    """Classify content using Anthropic's Claude API. Tries Sonnet first, falls back to Haiku."""
+    for model in _ANTHROPIC_MODELS:
+        result = await _try_anthropic_model(text, source, model)
+        if result is not None:
+            return result
+    return None
+
+
+async def _try_anthropic_model(text: str, source: str, model: str) -> Optional[ClassificationResult]:
+    """Try classification with a specific Anthropic model."""
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
             response = await client.post(
@@ -197,7 +232,7 @@ async def _classify_with_anthropic(text: str, source: str) -> Optional[Classific
                     "Content-Type": "application/json",
                 },
                 json={
-                    "model": "claude-3-haiku-20240307",
+                    "model": model,
                     "max_tokens": 200,
                     "system": LLM_SYSTEM_PROMPT,
                     "messages": [
@@ -206,18 +241,32 @@ async def _classify_with_anthropic(text: str, source: str) -> Optional[Classific
                 },
             )
 
+        if response.status_code == 404:
+            # Model not available on this API key — try next model
+            logger.info(f"Anthropic model {model} not available, trying fallback")
+            return None
         if response.status_code != 200:
-            logger.warning(f"Anthropic API error: {response.status_code}")
+            logger.warning(f"Anthropic API error ({model}): {response.status_code}")
             return None
 
         data = response.json()
         content = data["content"][0]["text"].strip()
+
+        # Handle potential markdown code fences in response
+        if content.startswith("```"):
+            content = content.strip("`").strip()
+            if content.startswith("json"):
+                content = content[4:].strip()
 
         result = json.loads(content)
         category = result.get("category", "neutral")
         confidence = float(result.get("confidence", 0.5))
 
         if category not in CATEGORY_WEIGHTS:
+            category = "neutral"
+
+        # Low confidence — default to neutral to avoid false positives
+        if confidence < 0.5:
             category = "neutral"
 
         severity = SEVERITY_MAP.get(category, "neutral")
@@ -232,8 +281,11 @@ async def _classify_with_anthropic(text: str, source: str) -> Optional[Classific
             description=f"AI classified as '{category}' ({confidence:.0%} confidence). Snippet: \"{snippet}\"",
             base_score_impact=base_impact,
         )
+    except json.JSONDecodeError:
+        logger.warning(f"Anthropic returned non-JSON response ({model})")
+        return None
     except Exception as e:
-        logger.warning(f"Anthropic classification failed: {e}")
+        logger.warning(f"Anthropic classification failed ({model}): {e}")
         return None
 
 

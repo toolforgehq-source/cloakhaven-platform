@@ -19,6 +19,7 @@ class DisputeResponse(BaseModel):
     status: str
     reviewer_notes: Optional[str]
     submitted_at: datetime
+    deadline_at: Optional[datetime] = None
     resolved_at: Optional[datetime]
 
     model_config = {"from_attributes": True}
