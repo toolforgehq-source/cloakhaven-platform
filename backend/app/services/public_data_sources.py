@@ -38,7 +38,7 @@ class PublicRecord:
 # https://www.courtlistener.com/api/rest/v3/
 # ============================================================
 
-async def search_court_records(name: str, max_results: int = 20) -> list[PublicRecord]:
+async def search_court_records(name: str, max_results: int = 10) -> list[PublicRecord]:
     """Search CourtListener for federal court cases involving a person."""
     records: list[PublicRecord] = []
     try:
@@ -59,6 +59,7 @@ async def search_court_records(name: str, max_results: int = 20) -> list[PublicR
             return records
 
         data = response.json()
+        seen_case_names: set[str] = set()  # Deduplicate by case name
         for result in data.get("results", []):
             case_name = result.get("caseName", "") or result.get("case_name", "")
             court = result.get("court", "")
@@ -68,6 +69,12 @@ async def search_court_records(name: str, max_results: int = 20) -> list[PublicR
 
             if not case_name:
                 continue
+
+            # Deduplicate: skip if we've already seen this case name
+            case_key = case_name.strip().lower()
+            if case_key in seen_case_names:
+                continue
+            seen_case_names.add(case_key)
 
             url = f"https://www.courtlistener.com{absolute_url}" if absolute_url else ""
 

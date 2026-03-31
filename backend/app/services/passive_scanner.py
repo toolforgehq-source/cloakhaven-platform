@@ -90,7 +90,7 @@ async def _serpapi_search(query: str, engine: str = "google", num: int = 10) -> 
         return []
     import httpx
     try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        async with httpx.AsyncClient(timeout=15.0) as client:
             params = {
                 "api_key": settings.SERPAPI_API_KEY,
                 "engine": engine,
@@ -146,23 +146,15 @@ async def _expanded_web_search(name: str, context: dict) -> list[dict]:
     queries_google = [
         # Core identity
         f'"{name}"',
-        # Platform-specific
-        f'"{name}" site:instagram.com',
-        f'"{name}" site:facebook.com',
-        f'"{name}" site:linkedin.com',
-        f'"{name}" site:tiktok.com',
-        f'"{name}" site:reddit.com',
-        f'"{name}" site:twitter.com OR site:x.com',
+        # Social platforms (combined to reduce query count)
+        f'"{name}" site:linkedin.com OR site:twitter.com OR site:instagram.com',
+        f'"{name}" site:facebook.com OR site:tiktok.com OR site:reddit.com',
         # Professional
-        f'"{name}" site:glassdoor.com',
-        f'"{name}" site:medium.com OR site:substack.com',
-        f'"{name}" site:github.com',
+        f'"{name}" site:glassdoor.com OR site:medium.com OR site:github.com',
         # Legal / court records
-        f'"{name}" arrested OR charged OR convicted OR indictment OR lawsuit',
-        f'"{name}" site:courtlistener.com OR site:unicourt.com OR site:pacermonitor.com',
-        # Professional achievements
-        f'"{name}" award OR recognition OR keynote OR speaker OR published',
-        # News coverage
+        f'"{name}" arrested OR charged OR convicted OR lawsuit',
+        # Professional achievements + news
+        f'"{name}" award OR keynote OR published OR recognition',
         f'"{name}" news OR interview OR featured OR announced',
     ]
 
@@ -224,7 +216,7 @@ async def _search_twitter_mentions(name: str) -> list[dict]:
 
     import httpx
     try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        async with httpx.AsyncClient(timeout=15.0) as client:
             response = await client.get(
                 "https://api.twitter.com/2/tweets/search/recent",
                 headers={"Authorization": f"Bearer {settings.TWITTER_BEARER_TOKEN}"},
