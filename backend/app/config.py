@@ -36,9 +36,12 @@ class Settings(BaseSettings):
     TWITTER_API_SECRET: str = ""
     TWITTER_BEARER_TOKEN: str = ""
 
-    # Google Custom Search
+    # Google Custom Search (deprecated — using SerpAPI instead)
     GOOGLE_API_KEY: str = ""
     GOOGLE_SEARCH_ENGINE_ID: str = ""
+
+    # SerpAPI (Google search results proxy)
+    SERPAPI_API_KEY: str = ""
 
     # Reddit API
     REDDIT_CLIENT_ID: str = ""
@@ -49,7 +52,7 @@ class Settings(BaseSettings):
     YOUTUBE_API_KEY: str = ""
 
     # Data Enrichment APIs
-    PROXYCURL_API_KEY: str = ""
+    PROXYCURL_API_KEY: str = ""  # Deprecated (LinkedIn lawsuit shut down Proxycurl in 2025)
     PEOPLEDATALABS_API_KEY: str = ""
 
     # AI/LLM for content classification

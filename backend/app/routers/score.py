@@ -127,7 +127,7 @@ async def start_audit(
             platform_usernames[acct.platform] = acct.platform_username
 
     # ── 1. Data Enrichment (resolve identity across platforms) ──
-    if settings.PROXYCURL_API_KEY or settings.PEOPLEDATALABS_API_KEY:
+    if settings.PEOPLEDATALABS_API_KEY:
         try:
             from app.services.enrichment_service import enrich_person
             enriched = await enrich_person(
@@ -185,16 +185,16 @@ async def start_audit(
             except Exception as e:
                 logger.warning(f"YouTube scan failed for user {current_user.id}: {e}")
 
-    # ── 5. Google Custom Search (web presence) ──
-    if settings.GOOGLE_API_KEY and settings.GOOGLE_SEARCH_ENGINE_ID:
+    # ── 5. Web Search via SerpAPI (web presence) ──
+    if settings.SERPAPI_API_KEY:
         try:
             from app.services.google_service import scan_web_presence
             if name:
                 await scan_web_presence(db, current_user.id, name, usernames or None)
                 platforms_scanned.append("google")
-                logger.info(f"Google web scan complete for user {current_user.id}")
+                logger.info(f"Web search scan complete for user {current_user.id}")
         except Exception as e:
-            logger.warning(f"Google scan failed for user {current_user.id}: {e}")
+            logger.warning(f"Web search scan failed for user {current_user.id}: {e}")
 
     # ── 6. Public profile scraping (fallback for unscanned platforms) ──
     if "twitter" not in platforms_scanned:

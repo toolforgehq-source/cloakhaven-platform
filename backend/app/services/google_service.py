@@ -1,10 +1,12 @@
 """
-Google Custom Search Integration Service
+Web Search Integration Service
 
-Scans the web for a person's digital footprint using Google Custom Search API.
+Scans the web for a person's digital footprint using SerpAPI (Google search results).
+Falls back gracefully if API key is not configured.
 Processes results through the content classifier to create findings.
 """
 
+import logging
 import uuid
 from typing import Optional
 import httpx
@@ -13,10 +15,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.models.finding import Finding
-from app.services.content_classifier import classify_web_result
+from app.services.content_classifier import classify_content_llm
 
+logger = logging.getLogger("cloakhaven.google")
 
-GOOGLE_SEARCH_BASE = "https://www.googleapis.com/customsearch/v1"
+SERPAPI_BASE = "https://serpapi.com/search.json"
 
 
 class GoogleServiceError(Exception):
@@ -24,28 +27,39 @@ class GoogleServiceError(Exception):
 
 
 async def search_web(query: str, num_results: int = 10) -> list[dict]:
-    """Execute a Google Custom Search query."""
-    if not settings.GOOGLE_API_KEY or not settings.GOOGLE_SEARCH_ENGINE_ID:
-        raise GoogleServiceError("Google Custom Search API not configured")
+    """Execute a web search via SerpAPI (returns Google results)."""
+    if not settings.SERPAPI_API_KEY:
+        raise GoogleServiceError("SerpAPI not configured")
 
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(timeout=30.0) as client:
         response = await client.get(
-            GOOGLE_SEARCH_BASE,
+            SERPAPI_BASE,
             params={
-                "key": settings.GOOGLE_API_KEY,
-                "cx": settings.GOOGLE_SEARCH_ENGINE_ID,
+                "api_key": settings.SERPAPI_API_KEY,
+                "engine": "google",
                 "q": query,
                 "num": min(num_results, 10),
             },
         )
 
-    if response.status_code == 403:
-        raise GoogleServiceError("Google API quota exceeded or invalid credentials")
+    if response.status_code == 401:
+        raise GoogleServiceError("SerpAPI: invalid API key")
+    if response.status_code == 429:
+        raise GoogleServiceError("SerpAPI: rate limit exceeded")
     if response.status_code != 200:
-        raise GoogleServiceError(f"Google API error: {response.status_code}")
+        raise GoogleServiceError(f"SerpAPI error: {response.status_code}")
 
     data = response.json()
-    return data.get("items", [])
+    organic = data.get("organic_results", [])
+
+    results = []
+    for item in organic:
+        results.append({
+            "link": item.get("link", ""),
+            "title": item.get("title", ""),
+            "snippet": item.get("snippet", ""),
+        })
+    return results
 
 
 async def scan_web_presence(
@@ -74,8 +88,8 @@ async def scan_web_presence(
     for query in queries:
         try:
             results = await search_web(query)
-        except GoogleServiceError:
-            # If API fails, skip this query but continue with others
+        except GoogleServiceError as e:
+            logger.warning("Web search failed for query '%s': %s", query, e)
             continue
 
         for item in results:
@@ -89,10 +103,11 @@ async def scan_web_presence(
             title = item.get("title", "")
             snippet = item.get("snippet", "")
 
-            # Classify the search result
-            classification = classify_web_result(
-                title=title,
-                snippet=snippet,
+            # Classify the search result using LLM if available
+            combined_text = f"{title} {snippet}"
+            classification = await classify_content_llm(
+                text=combined_text,
+                source="google",
                 url=url,
             )
 
@@ -110,7 +125,7 @@ async def scan_web_presence(
                 description=classification.description,
                 evidence_snippet=snippet[:500] if snippet else None,
                 evidence_url=url,
-                original_date=None,  # Google results don't always have dates
+                original_date=None,
                 platform_engagement_count=0,
                 base_score_impact=classification.base_score_impact,
                 final_score_impact=classification.base_score_impact,

@@ -197,7 +197,7 @@ async def _classify_with_anthropic(text: str, source: str) -> Optional[Classific
                     "Content-Type": "application/json",
                 },
                 json={
-                    "model": "claude-3-5-haiku-20241022",
+                    "model": "claude-3-haiku-20240307",
                     "max_tokens": 200,
                     "system": LLM_SYSTEM_PROMPT,
                     "messages": [
