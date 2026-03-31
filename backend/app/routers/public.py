@@ -167,9 +167,10 @@ async def search_public_profiles(
 @router.get("/profile/{username}", response_model=PublicProfileResponse)
 async def get_public_profile(
     username: str,
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Get a public profile by username."""
+    """Get a public profile by username. Requires auth + payment gating."""
     result = await db.execute(
         select(PublicProfile).where(PublicProfile.lookup_username == username)
     )
@@ -181,18 +182,18 @@ async def get_public_profile(
             detail="Profile not found",
         )
 
-    return PublicProfileResponse(
-        id=profile.id,
-        lookup_name=profile.lookup_name,
-        lookup_username=profile.lookup_username,
-        public_score=profile.public_score,
-        score_accuracy_pct=profile.score_accuracy_pct,
-        is_claimed=profile.is_claimed,
-        score_color=get_score_color(profile.public_score) if profile.public_score else None,
-        score_label=get_score_label(profile.public_score) if profile.public_score else None,
-        last_scanned_at=profile.last_scanned_at,
-        public_findings_summary=profile.public_findings_summary,
+    # Check payment access
+    purchases_result = await db.execute(
+        select(PurchasedReport).where(
+            PurchasedReport.user_id == current_user.id,
+            PurchasedReport.expires_at > datetime.utcnow(),
+        )
     )
+    purchases = list(purchases_result.scalars().all())
+
+    if _user_has_report_access(current_user, profile.id, purchases):
+        return _build_full_response(profile)
+    return _build_teaser_response(profile)
 
 
 @router.post("/claim", response_model=MessageResponse)

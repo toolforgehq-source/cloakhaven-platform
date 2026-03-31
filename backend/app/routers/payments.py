@@ -178,15 +178,27 @@ async def stripe_webhook(
             user = result.scalar_one_or_none()
             if user:
                 if price_type == "lookup" and profile_id:
-                    # Record the single report purchase
-                    purchased = PurchasedReport(
-                        user_id=uuid.UUID(user_id),
-                        profile_id=uuid.UUID(profile_id),
-                        stripe_session_id=session.get("id"),
-                        purchased_at=datetime.utcnow(),
-                        expires_at=datetime.utcnow() + timedelta(days=REPORT_ACCESS_DAYS),
+                    # Upsert: extend expiration if already purchased
+                    existing = await db.execute(
+                        select(PurchasedReport).where(
+                            PurchasedReport.user_id == uuid.UUID(user_id),
+                            PurchasedReport.profile_id == uuid.UUID(profile_id),
+                        )
                     )
-                    db.add(purchased)
+                    existing_purchase = existing.scalar_one_or_none()
+                    if existing_purchase:
+                        existing_purchase.expires_at = datetime.utcnow() + timedelta(days=REPORT_ACCESS_DAYS)
+                        existing_purchase.stripe_session_id = session.get("id")
+                        existing_purchase.purchased_at = datetime.utcnow()
+                    else:
+                        purchased = PurchasedReport(
+                            user_id=uuid.UUID(user_id),
+                            profile_id=uuid.UUID(profile_id),
+                            stripe_session_id=session.get("id"),
+                            purchased_at=datetime.utcnow(),
+                            expires_at=datetime.utcnow() + timedelta(days=REPORT_ACCESS_DAYS),
+                        )
+                        db.add(purchased)
                 elif price_type == "unlimited":
                     user.subscription_tier = "subscriber"
                     user.subscription_status = "active"

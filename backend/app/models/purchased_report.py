@@ -2,13 +2,16 @@
 
 import uuid
 from datetime import datetime
-from sqlalchemy import String, DateTime, ForeignKey, Uuid
+from sqlalchemy import String, DateTime, ForeignKey, Uuid, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 from app.database import Base
 
 
 class PurchasedReport(Base):
     __tablename__ = "purchased_reports"
+    __table_args__ = (
+        UniqueConstraint("user_id", "profile_id", name="uq_user_profile"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(
         Uuid, primary_key=True, default=uuid.uuid4
