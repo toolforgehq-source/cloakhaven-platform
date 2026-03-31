@@ -422,7 +422,7 @@ async def list_partner_keys(
             {
                 "id": str(k.id),
                 "partner_name": k.partner_name,
-                "api_key": k.api_key,
+                "api_key": k.api_key[:12] + "..." + k.api_key[-4:],
                 "contact_email": k.contact_email,
                 "is_active": k.is_active,
                 "rate_limit_per_minute": k.rate_limit_per_minute,

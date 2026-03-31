@@ -1,4 +1,5 @@
 import os
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -19,8 +20,20 @@ STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
 
 @asynccontextmanager
 async def lifespan(application: FastAPI):
+    from app.middleware.rate_limit import public_limiter, auth_limiter, partner_limiter, audit_limiter
+
     await init_db()
+
+    # Background task to periodically clean up stale rate limit entries
+    async def _cleanup_rate_limiters():
+        while True:
+            await asyncio.sleep(3600)  # Every hour
+            for limiter in (public_limiter, auth_limiter, partner_limiter, audit_limiter):
+                limiter.cleanup(max_age=7200)
+
+    cleanup_task = asyncio.create_task(_cleanup_rate_limiters())
     yield
+    cleanup_task.cancel()
 
 
 app = FastAPI(

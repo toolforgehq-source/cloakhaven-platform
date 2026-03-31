@@ -15,6 +15,7 @@ from app.models.finding import Finding
 from app.models.social_account import SocialAccount
 from app.models.partner_key import PartnerApiKey
 from app.services.scoring_engine import get_score_color, get_score_label
+from app.middleware.rate_limit import partner_limiter, check_rate_limit
 
 router = APIRouter(prefix="/api/v1/partner", tags=["partner"])
 
@@ -83,6 +84,12 @@ async def pull_user_score(
     Partners must provide either email or user_id to look up the user.
     Only returns scores for users with public visibility.
     """
+    # Rate limit per partner API key
+    check_rate_limit(
+        str(partner.id), partner_limiter,
+        "Partner rate limit exceeded. Please try again later.",
+    )
+
     if not request.email and not request.user_id:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -102,16 +109,11 @@ async def pull_user_score(
         )
         user = result.scalar_one_or_none()
 
-    if not user:
+    # Return same error for not-found and private to prevent user enumeration
+    if not user or user.profile_visibility != "public":
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found",
-        )
-
-    if user.profile_visibility != "public":
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="User profile is private. Score access requires user consent.",
+            detail="No public score found for this identifier",
         )
 
     # Get score
