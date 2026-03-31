@@ -1,7 +1,7 @@
 """Dispute endpoints."""
 
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -49,13 +49,15 @@ async def create_dispute(
             detail="This finding already has an active dispute",
         )
 
-    # Create dispute
+    # Create dispute with 30-day SLA deadline
+    from app.models.dispute import DISPUTE_SLA_DAYS
     dispute = Dispute(
         user_id=current_user.id,
         finding_id=finding_id,
         reason=request.reason,
         supporting_evidence=request.supporting_evidence,
         status="pending",
+        deadline_at=datetime.utcnow() + timedelta(days=DISPUTE_SLA_DAYS),
     )
     db.add(dispute)
 

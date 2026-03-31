@@ -9,7 +9,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.database import init_db
-from app.routers import auth, score, findings, disputes, accounts, public, payments, employer, admin
+from app.routers import auth, score, findings, disputes, accounts, public, payments, employer, admin, compliance
 
 logger = logging.getLogger("cloakhaven")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -50,6 +50,7 @@ app.include_router(public.router)
 app.include_router(payments.router)
 app.include_router(employer.router)
 app.include_router(admin.router)
+app.include_router(compliance.router)
 
 
 @app.exception_handler(Exception)

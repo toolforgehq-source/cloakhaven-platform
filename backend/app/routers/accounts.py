@@ -36,6 +36,11 @@ class AccountsListResponse(BaseModel):
     accounts: list[AccountResponse]
 
 
+class LinkAccountRequest(BaseModel):
+    platform: str
+    username: str
+
+
 @router.get("", response_model=AccountsListResponse)
 async def list_accounts(
     current_user: User = Depends(get_current_user),
@@ -158,6 +163,66 @@ async def upload_data_archive(
         message=f"{platform.title()} data archive uploaded and processing. "
                 f"Your score will be updated once processing is complete."
     )
+
+
+VALID_LINK_PLATFORMS = {
+    "twitter", "instagram", "facebook", "tiktok",
+    "linkedin", "reddit", "youtube", "github",
+}
+
+
+@router.post("/link", response_model=AccountResponse, status_code=status.HTTP_201_CREATED)
+async def link_social_account(
+    request: LinkAccountRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Manually link a social account by providing a platform username/handle.
+
+    This allows users to tell us their handles on platforms where we
+    don't have OAuth integration. The handle will be used during audits
+    to scan that platform.
+    """
+    platform = request.platform.lower().strip()
+    if platform not in VALID_LINK_PLATFORMS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid platform. Must be one of: {', '.join(sorted(VALID_LINK_PLATFORMS))}",
+        )
+
+    username = request.username.strip().lstrip("@")
+    if not username:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Username cannot be empty",
+        )
+
+    # Check if already linked
+    result = await db.execute(
+        select(SocialAccount).where(
+            SocialAccount.user_id == current_user.id,
+            SocialAccount.platform == platform,
+        )
+    )
+    existing = result.scalar_one_or_none()
+    if existing:
+        # Update the username
+        existing.platform_username = username
+        await db.commit()
+        await db.refresh(existing)
+        return AccountResponse.model_validate(existing)
+
+    account = SocialAccount(
+        user_id=current_user.id,
+        platform=platform,
+        platform_username=username,
+        connection_type="api",
+    )
+    db.add(account)
+    await db.commit()
+    await db.refresh(account)
+
+    return AccountResponse.model_validate(account)
 
 
 @router.delete("/{account_id}", response_model=MessageResponse)
