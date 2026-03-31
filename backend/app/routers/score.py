@@ -127,7 +127,7 @@ async def start_audit(
             platform_usernames[acct.platform] = acct.platform_username
 
     # ── 1. Data Enrichment (resolve identity across platforms) ──
-    if settings.PROXYCURL_API_KEY or settings.PEOPLEDATALABS_API_KEY:
+    if settings.PEOPLEDATALABS_API_KEY:
         try:
             from app.services.enrichment_service import enrich_person
             enriched = await enrich_person(

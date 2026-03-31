@@ -52,6 +52,7 @@ class Settings(BaseSettings):
     YOUTUBE_API_KEY: str = ""
 
     # Data Enrichment APIs
+    PROXYCURL_API_KEY: str = ""  # Deprecated (LinkedIn lawsuit shut down Proxycurl in 2025)
     PEOPLEDATALABS_API_KEY: str = ""
 
     # AI/LLM for content classification
