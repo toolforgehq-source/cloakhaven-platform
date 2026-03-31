@@ -30,7 +30,7 @@ from sqlalchemy import select
 
 from app.config import settings
 from app.models.public_profile import PublicProfile
-from app.services.content_classifier import classify_content_llm
+from app.services.content_classifier import classify_content_llm, classify_content
 from app.services.name_disambiguator import disambiguate_result, _is_common_name
 from app.services.public_data_sources import search_all_public_records, PublicRecord
 
@@ -628,18 +628,25 @@ async def run_passive_scan(
         else:
             is_verified = True  # High identity confidence, no disambiguation needed
 
-        # Classify content
+        # Classify content — rule-based first (instant), LLM only for ambiguous
         from app.services.google_service import _detect_source
         source = _detect_source(url)
         combined_text = f"{title} {snippet}"
 
-        async with semaphore:
-            classification = await classify_content_llm(
-                text=combined_text,
-                source=source,
-                url=url,
-                bulk=True,
-            )
+        # Fast path: rule-based classification
+        rule_result = classify_content(combined_text, source=source, url=url)
+
+        # Only use LLM if rule-based returned neutral (ambiguous) and text is substantial
+        if rule_result.category == "neutral" and len(combined_text) > 50:
+            async with semaphore:
+                classification = await classify_content_llm(
+                    text=combined_text,
+                    source=source,
+                    url=url,
+                    bulk=True,
+                )
+        else:
+            classification = rule_result
 
         if classification.category == "neutral" and classification.confidence > 0.7:
             return None
@@ -664,13 +671,18 @@ async def run_passive_scan(
         if not text:
             return None
 
-        async with semaphore:
-            classification = await classify_content_llm(
-                text=text,
-                source="twitter",
-                url=tweet.get("url", ""),
-                bulk=True,
-            )
+        # Rule-based first, LLM only for ambiguous tweets
+        rule_result = classify_content(text, source="twitter")
+        if rule_result.category == "neutral" and len(text) > 30:
+            async with semaphore:
+                classification = await classify_content_llm(
+                    text=text,
+                    source="twitter",
+                    url=tweet.get("url", ""),
+                    bulk=True,
+                )
+        else:
+            classification = rule_result
 
         if classification.category == "neutral":
             return None
@@ -711,13 +723,18 @@ async def run_passive_scan(
             if not disambig.is_match or disambig.confidence < 0.5:
                 return None
 
-        async with semaphore:
-            classification = await classify_content_llm(
-                text=combined,
-                source="youtube",
-                url=video.get("url", ""),
-                bulk=True,
-            )
+        # Rule-based first, LLM only for ambiguous
+        rule_result = classify_content(combined, source="youtube")
+        if rule_result.category == "neutral" and len(combined) > 50:
+            async with semaphore:
+                classification = await classify_content_llm(
+                    text=combined,
+                    source="youtube",
+                    url=video.get("url", ""),
+                    bulk=True,
+                )
+        else:
+            classification = rule_result
 
         if classification.category == "neutral":
             return None
