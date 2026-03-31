@@ -147,11 +147,15 @@ export default function Search() {
     try {
       const data = await api.searchPublic(query);
       setResults(data.results);
-      setSearched(true);
 
       // If a background scan was triggered and no results yet, start polling
+      // Set scanning BEFORE searched so the spinner renders instead of "no results"
       if (data.scan_pending && data.results.length === 0) {
+        setScanning(true);
+        setSearched(true);
         startPolling(query);
+      } else {
+        setSearched(true);
       }
     } catch {
       setResults([]);
