@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useParams, Link } from "react-router-dom";
 import { api, Scorecard as ScorecardData } from "@/lib/api";
 import { Shield, Copy, Check, ExternalLink, Linkedin, Twitter } from "lucide-react";
+import Logo from "@/components/Logo";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 
 export default function ScorecardPage() {
@@ -106,7 +107,7 @@ export default function ScorecardPage() {
           {/* Header */}
           <div className="bg-gradient-to-r from-indigo-600 to-purple-600 px-6 py-4 flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <div className="w-7 h-7 rounded-lg bg-white/20 flex items-center justify-center font-bold text-xs text-white">CH</div>
+              <Logo size={28} />
               <span className="text-white font-semibold text-sm">Cloak Haven</span>
             </div>
             <span className="text-white/70 text-xs">Digital Reputation Scorecard</span>
@@ -276,7 +277,7 @@ function PageShell({ children }: { children: React.ReactNode }) {
       <nav className="border-b border-slate-800">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
           <Link to="/" className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-indigo-500 flex items-center justify-center font-bold text-sm text-white">CH</div>
+            <Logo size={32} />
             <span className="text-lg font-semibold text-white">Cloak Haven</span>
           </Link>
           <div className="flex items-center gap-3 sm:gap-6">

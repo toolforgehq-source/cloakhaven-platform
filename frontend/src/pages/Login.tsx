@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "@/lib/auth";
+import Logo from "@/components/Logo";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 
 export default function Login() {
@@ -31,7 +32,7 @@ export default function Login() {
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
           <Link to="/" className="inline-flex items-center gap-2 mb-6">
-            <div className="w-8 h-8 rounded-lg bg-indigo-500 flex items-center justify-center font-bold text-sm text-white">CH</div>
+            <Logo size={32} />
             <span className="text-lg font-semibold text-white">Cloak Haven</span>
           </Link>
           <h1 className="text-2xl font-bold text-white">Welcome back</h1>

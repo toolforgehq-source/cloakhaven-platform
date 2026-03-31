@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { Shield, Search, BarChart3, Users, ArrowRight, CheckCircle, Lock, Eye, Menu, X } from "lucide-react";
 import Footer from "@/components/Footer";
+import Logo from "@/components/Logo";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 
 function LandingNav() {
@@ -10,7 +11,7 @@ function LandingNav() {
     <nav className="border-b border-slate-800">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
         <Link to="/" className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-lg bg-indigo-500 flex items-center justify-center font-bold text-sm">CH</div>
+          <Logo size={32} />
           <span className="text-lg font-semibold">Cloak Haven</span>
         </Link>
         <div className="hidden md:flex items-center gap-6">
