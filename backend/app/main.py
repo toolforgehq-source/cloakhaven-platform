@@ -82,6 +82,7 @@ async def healthz():
     return {"status": "ok"}
 
 
+
 # Serve frontend static files (if built)
 if STATIC_DIR.is_dir():
     app.mount("/assets", StaticFiles(directory=str(STATIC_DIR / "assets")), name="static-assets")
