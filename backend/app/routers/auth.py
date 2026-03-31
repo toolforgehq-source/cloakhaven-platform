@@ -5,7 +5,7 @@ import time
 from collections import defaultdict
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, func
 from datetime import datetime, date, timedelta
 
 from app.database import get_db
@@ -105,6 +105,10 @@ async def register(request: RegisterRequest, raw_request: Request, db: AsyncSess
             detail="Email already registered",
         )
 
+    # First-user-is-admin: if no users exist yet, make this one admin
+    user_count_result = await db.execute(select(func.count(User.id)))
+    is_first_user = (user_count_result.scalar() or 0) == 0
+
     # Create user
     verification_token = generate_verification_token()
     user = User(
@@ -114,6 +118,7 @@ async def register(request: RegisterRequest, raw_request: Request, db: AsyncSess
         display_name=request.display_name,
         date_of_birth=request.date_of_birth,
         email_verification_token=verification_token,
+        is_admin=is_first_user,
     )
     db.add(user)
     await db.commit()

@@ -366,6 +366,7 @@ export interface PublicProfile {
 export interface PublicSearchResponse {
   results: PublicProfile[];
   total: number;
+  scan_pending?: boolean;
 }
 
 export interface Scorecard {
