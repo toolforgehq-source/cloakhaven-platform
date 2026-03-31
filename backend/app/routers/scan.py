@@ -120,9 +120,55 @@ async def passive_scan(
     4. Cross-references findings for corroboration
     5. Computes and stores the score
 
+    Returns cached results if scanned within the last 24 hours.
     Provide more identifiers (email, company, location) for higher accuracy.
     """
     _check_scan_rate_limit(request)
+
+    # Check for recent cached result (within 24 hours)
+    force_rescan = request.query_params.get("force", "").lower() == "true"
+    if not force_rescan:
+        cached = await db.execute(
+            select(PublicProfile).where(PublicProfile.lookup_name == body.name)
+        )
+        cached_profile = cached.scalar_one_or_none()
+        if cached_profile and cached_profile.last_scanned_at:
+            hours_since = (datetime.utcnow() - cached_profile.last_scanned_at).total_seconds() / 3600
+            if hours_since < 24 and cached_profile.public_score is not None:
+                # Return cached result
+                findings_data = cached_profile.public_findings_summary or {}
+                findings_list = findings_data.get("findings", [])
+                return PassiveScanResponse(
+                    profile_id=cached_profile.id,
+                    name=cached_profile.lookup_name,
+                    overall_score=cached_profile.public_score,
+                    social_media_score=cached_profile.social_media_score or 850,
+                    web_presence_score=cached_profile.web_presence_score or 0,
+                    posting_behavior_score=cached_profile.posting_behavior_score or 850,
+                    accuracy_pct=cached_profile.score_accuracy_pct or 0.0,
+                    identity_confidence=cached_profile.identity_confidence or 0.3,
+                    score_color=get_score_color(cached_profile.public_score),
+                    score_label=get_score_label(cached_profile.public_score),
+                    sources_scanned=findings_data.get("sources_scanned", []),
+                    total_findings=findings_data.get("total_findings", 0),
+                    findings=[
+                        PassiveScanFinding(
+                            source=f.get("source", ""),
+                            category=f.get("category", "neutral"),
+                            severity=f.get("severity", "neutral"),
+                            title=f.get("title", ""),
+                            description=f.get("description", "")[:300],
+                            evidence_url=f.get("evidence_url"),
+                            confidence=f.get("confidence", 0.5),
+                            corroboration_count=f.get("corroboration_count", 1),
+                            base_score_impact=f.get("base_score_impact", 0.0),
+                        )
+                        for f in findings_list[:50]
+                    ],
+                    enrichment_data=findings_data.get("enrichment_data"),
+                    scan_duration_seconds=cached_profile.scan_duration_seconds or 0.0,
+                    scanned_at=cached_profile.last_scanned_at,
+                )
 
     result = await run_passive_scan(
         db=db,

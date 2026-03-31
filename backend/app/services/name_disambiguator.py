@@ -60,6 +60,38 @@ Confidence guidelines:
 """
 
 
+def _quick_name_match(target_name: str, title: str, snippet: str, context: dict) -> DisambiguationResult | None:
+    """
+    Fast heuristic check before calling LLM. Returns a result if we can
+    confidently determine match/non-match without LLM, otherwise None.
+    """
+    name_lower = target_name.lower()
+    title_lower = title.lower()
+    snippet_lower = snippet.lower()
+    combined = f"{title_lower} {snippet_lower}"
+
+    # If full name appears in title AND a context clue matches, high confidence match
+    if name_lower in title_lower:
+        company = context.get("company", "").lower()
+        job_title = context.get("job_title", "").lower()
+        location = context.get("location", "").lower()
+
+        # Name in title + company/job/location in combined text = confident match
+        if company and company in combined:
+            return DisambiguationResult(is_match=True, confidence=0.85, reasoning="Name + company match in title")
+        if job_title and job_title in combined:
+            return DisambiguationResult(is_match=True, confidence=0.8, reasoning="Name + job title match")
+        if location and location in combined:
+            return DisambiguationResult(is_match=True, confidence=0.75, reasoning="Name + location match")
+
+        # Name in title with no contradicting info = moderate confidence match
+        # (for common names we still want LLM, but for unique names this is fine)
+        if not _is_common_name(target_name):
+            return DisambiguationResult(is_match=True, confidence=0.7, reasoning="Unique name found in title")
+
+    return None  # Can't determine — need LLM
+
+
 async def disambiguate_result(
     target_name: str,
     target_context: dict,
@@ -69,10 +101,16 @@ async def disambiguate_result(
 ) -> DisambiguationResult:
     """
     Use LLM to verify whether a search result is about the target person.
+    Falls back to fast heuristic when possible to avoid LLM latency.
 
     target_context can include:
     - email, company, job_title, location, linkedin_url, etc.
     """
+    # Try fast heuristic first (no LLM call needed)
+    quick = _quick_name_match(target_name, result_title, result_snippet, target_context)
+    if quick is not None:
+        return quick
+
     # Build target description from available context
     parts = [f"Name: {target_name}"]
     if target_context.get("email"):
