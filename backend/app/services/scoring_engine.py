@@ -60,7 +60,7 @@ CATEGORY_WEIGHTS: dict[str, float] = {
     "community_involvement": 18.0,
     "positive_press": 30.0,
     "constructive_content": 15.0,
-    "verified_credentials": 20.0
+    "verified_credentials": 20.0,
     # Neutral — not scored
     "neutral": 0.0,
 }
