@@ -163,7 +163,7 @@ export default function Search() {
       const message = err instanceof Error ? err.message : "Request failed";
       if (message.toLowerCase().includes("rate limit") || message.toLowerCase().includes("too many")) {
         setErrorMessage("You've made too many searches. Please wait a few minutes before trying again.");
-      } else if (message.toLowerCase().includes("daily") && message.toLowerCase().includes("cap")) {
+      } else if (message.toLowerCase().includes("daily") && message.toLowerCase().includes("limit")) {
         setErrorMessage("You've reached the daily search limit. Please try again tomorrow.");
       } else {
         setErrorMessage(null);
