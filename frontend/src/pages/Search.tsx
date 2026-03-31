@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Link } from "react-router-dom";
 import { api, PublicProfile } from "@/lib/api";
-import { Search as SearchIcon, User, Shield, ChevronDown, ChevronUp, ExternalLink, Scale, Newspaper, Award, AlertTriangle, FileText } from "lucide-react";
+import { Search as SearchIcon, User, Shield, ChevronDown, ChevronUp, ExternalLink, Scale, Newspaper, Award, AlertTriangle, FileText, Clock } from "lucide-react";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
@@ -97,6 +97,7 @@ export default function Search() {
   const [loading, setLoading] = useState(false);
   const [scanning, setScanning] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const pollStartRef = useRef<number>(0);
 
@@ -143,6 +144,7 @@ export default function Search() {
     if (query.length < 2) return;
     setLoading(true);
     setExpandedId(null);
+    setErrorMessage(null);
     stopPolling();
     try {
       const data = await api.searchPublic(query);
@@ -157,7 +159,15 @@ export default function Search() {
       } else {
         setSearched(true);
       }
-    } catch {
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Request failed";
+      if (message.toLowerCase().includes("rate limit") || message.toLowerCase().includes("too many")) {
+        setErrorMessage("You've made too many searches. Please wait a few minutes before trying again.");
+      } else if (message.toLowerCase().includes("daily") && message.toLowerCase().includes("cap")) {
+        setErrorMessage("You've reached the daily search limit. Please try again tomorrow.");
+      } else {
+        setErrorMessage(null);
+      }
       setResults([]);
       setSearched(true);
     } finally {
@@ -220,7 +230,17 @@ export default function Search() {
           </div>
         )}
 
-        {searched && !scanning && results.length === 0 && (
+        {searched && !scanning && results.length === 0 && errorMessage && (
+          <div className="bg-slate-900 border border-amber-800/40 rounded-xl p-12 text-center">
+            <Clock className="w-10 h-10 text-amber-400 mx-auto mb-3" />
+            <p className="text-amber-300 font-medium">{errorMessage}</p>
+            <p className="text-sm text-slate-400 mt-2">
+              Rate limits help protect the service from abuse. Each person gets 10 searches per hour.
+            </p>
+          </div>
+        )}
+
+        {searched && !scanning && results.length === 0 && !errorMessage && (
           <div className="bg-slate-900 border border-slate-800 rounded-xl p-12 text-center">
             <User className="w-10 h-10 text-slate-600 mx-auto mb-3" />
             <p className="text-slate-400">No profiles found for "{query}"</p>
