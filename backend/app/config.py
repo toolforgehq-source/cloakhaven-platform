@@ -72,6 +72,9 @@ class Settings(BaseSettings):
     EMAIL_FROM_SUPPORT: str = "support@cloakhaven.com"
     EMAIL_FROM_PRIVACY: str = "privacy@cloakhaven.com"
 
+    # Sentry — error monitoring (leave blank to disable)
+    SENTRY_DSN: str = ""
+
     # Frontend URL (for email links, CORS, etc.)
     FRONTEND_URL: str = "http://localhost:5173"
 

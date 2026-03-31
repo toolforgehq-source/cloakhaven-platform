@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { Link } from "react-router-dom";
 import { api, PublicProfile } from "@/lib/api";
 import { Search as SearchIcon, User, Shield, ChevronDown, ChevronUp, ExternalLink, Scale, Newspaper, Award, AlertTriangle, FileText } from "lucide-react";
@@ -86,23 +86,73 @@ function getSourceLabel(source: string): string {
   return labels[source] || source;
 }
 
+const POLL_INTERVAL_MS = 2000;
+const POLL_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
+
 export default function Search() {
   useDocumentTitle("Search");
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<PublicProfile[]>([]);
   const [searched, setSearched] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [scanning, setScanning] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const pollStartRef = useRef<number>(0);
+
+  const stopPolling = useCallback(() => {
+    if (pollRef.current) {
+      clearInterval(pollRef.current);
+      pollRef.current = null;
+    }
+    setScanning(false);
+  }, []);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
+  }, []);
+
+  const startPolling = useCallback((searchQuery: string) => {
+    stopPolling();
+    setScanning(true);
+    pollStartRef.current = Date.now();
+
+    pollRef.current = setInterval(async () => {
+      // Timeout after 5 minutes
+      if (Date.now() - pollStartRef.current > POLL_TIMEOUT_MS) {
+        stopPolling();
+        return;
+      }
+      try {
+        const data = await api.searchPublic(searchQuery);
+        if (data.results.length > 0) {
+          setResults(data.results);
+          stopPolling();
+        }
+      } catch {
+        // Keep polling on transient errors
+      }
+    }, POLL_INTERVAL_MS);
+  }, [stopPolling]);
 
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
     if (query.length < 2) return;
     setLoading(true);
     setExpandedId(null);
+    stopPolling();
     try {
       const data = await api.searchPublic(query);
       setResults(data.results);
       setSearched(true);
+
+      // If a background scan was triggered and no results yet, start polling
+      if (data.scan_pending && data.results.length === 0) {
+        startPolling(query);
+      }
     } catch {
       setResults([]);
       setSearched(true);
@@ -156,7 +206,17 @@ export default function Search() {
           </button>
         </form>
 
-        {searched && results.length === 0 && (
+        {scanning && results.length === 0 && (
+          <div className="bg-slate-900 border border-indigo-800/40 rounded-xl p-12 text-center">
+            <div className="w-10 h-10 border-4 border-indigo-500/30 border-t-indigo-500 rounded-full animate-spin mx-auto mb-4" />
+            <p className="text-white font-medium">Scanning public records...</p>
+            <p className="text-sm text-slate-400 mt-2">
+              We're searching public data sources for "{query}". This usually takes 30–60 seconds.
+            </p>
+          </div>
+        )}
+
+        {searched && !scanning && results.length === 0 && (
           <div className="bg-slate-900 border border-slate-800 rounded-xl p-12 text-center">
             <User className="w-10 h-10 text-slate-600 mx-auto mb-3" />
             <p className="text-slate-400">No profiles found for "{query}"</p>
