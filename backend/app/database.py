@@ -28,6 +28,9 @@ async_session_maker = async_sessionmaker(
     expire_on_commit=False,
 )
 
+# Alias for background tasks that need their own session
+async_session_factory = async_session_maker
+
 
 class Base(DeclarativeBase):
     pass
@@ -62,6 +65,16 @@ async def _run_safe_migrations():
     """Add columns that create_all() can't add to existing tables."""
     migrations = [
         ("disputes", "deadline_at", "DATETIME"),
+        # Passive scan accuracy fields on public_profiles
+        ("public_profiles", "identity_confidence", "FLOAT DEFAULT 0.0"),
+        ("public_profiles", "match_context", "JSON"),
+        ("public_profiles", "identity_match_reasoning", "VARCHAR(2000)"),
+        ("public_profiles", "sources_scanned", "JSON"),
+        ("public_profiles", "social_media_score", "INTEGER"),
+        ("public_profiles", "web_presence_score", "INTEGER"),
+        ("public_profiles", "posting_behavior_score", "INTEGER"),
+        ("public_profiles", "total_findings_count", "INTEGER DEFAULT 0"),
+        ("public_profiles", "scan_duration_seconds", "FLOAT"),
     ]
     async with engine.begin() as conn:
         for table, column, col_type in migrations:

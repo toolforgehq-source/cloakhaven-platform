@@ -6,7 +6,7 @@ normalized findings and produces scores. It doesn't care where the data
 came from.
 
 Score range: 0-1000
-Base score: 850 (everyone starts here, similar to credit scores)
+Base score: 750 (everyone starts "good", like a 750 FICO)
 
 Components:
   - Social Media History: 40% weight
@@ -37,30 +37,30 @@ from app.models.user import User
 # ============================================================
 
 CATEGORY_WEIGHTS: dict[str, float] = {
-    # Critical severity
+    # Critical severity — genuinely harmful behavior
     "hate_speech": -150.0,
     "threats": -140.0,
     "illegal_activity": -130.0,
-    "court_records": -120.0,
+    "court_records": -80.0,  # Reduced from -120 but still significant
     "explicit_content": -110.0,
     # High severity
     "discriminatory": -80.0,
     "harassment": -75.0,
     "substance_abuse": -60.0,
     "political_extremism": -50.0,
-    "negative_press": -70.0,
+    "negative_press": 0.0,  # Informational only — opinions/controversy don't affect score
     # Medium severity
     "profanity": -30.0,
     "unprofessional": -25.0,
     "negative_reviews": -35.0,
-    "controversial_opinions": -20.0,
+    "controversial_opinions": 0.0,  # Informational only — opinions don't affect score
     "misinformation": -25.0,
-    # Positive
-    "professional_achievement": 20.0,
-    "community_involvement": 15.0,
-    "positive_press": 25.0,
-    "constructive_content": 10.0,
-    "verified_credentials": 15.0,
+    # Positive — meaningful but capped by diminishing returns in passive scanner
+    "professional_achievement": 25.0,
+    "community_involvement": 18.0,
+    "positive_press": 30.0,
+    "constructive_content": 15.0,
+    "verified_credentials": 20.0,
     # Neutral — not scored
     "neutral": 0.0,
 }
@@ -75,7 +75,7 @@ SEVERITY_MAP: dict[str, str] = {
     "harassment": "high",
     "substance_abuse": "high",
     "political_extremism": "high",
-    "negative_press": "high",
+    "negative_press": "neutral",  # Tracked but doesn't penalize — opinions aren't misconduct
     "profanity": "medium",
     "unprofessional": "medium",
     "negative_reviews": "medium",
@@ -420,16 +420,17 @@ async def calculate_score(db: AsyncSession, user_id: uuid.UUID) -> Score:
 
 
 def get_score_color(score: int) -> str:
-    """Return the hex color for a given score value."""
-    if score >= 900:
-        return "#10B981"  # Emerald Green — Excellent
-    elif score >= 800:
+    """Return the hex color for a given score value.
+    Calibrated like FICO: 850 is near-perfect, 750 is good, 600 is fair."""
+    if score >= 800:
+        return "#10B981"  # Emerald Green — Excellent (rare, like 800+ FICO)
+    elif score >= 750:
         return "#22C55E"  # Green — Very Good
     elif score >= 700:
         return "#84CC16"  # Yellow-Green — Good
-    elif score >= 600:
+    elif score >= 650:
         return "#EAB308"  # Yellow — Fair
-    elif score >= 500:
+    elif score >= 550:
         return "#F97316"  # Orange — Needs Attention
     elif score >= 400:
         return "#EF4444"  # Red-Orange — Poor
@@ -438,16 +439,17 @@ def get_score_color(score: int) -> str:
 
 
 def get_score_label(score: int) -> str:
-    """Return the label for a given score value."""
-    if score >= 900:
-        return "Excellent"
-    elif score >= 800:
+    """Return the label for a given score value.
+    Calibrated like FICO: 800+ is exceptional, 750 is very good."""
+    if score >= 800:
+        return "Excellent"  # Like 800+ FICO — rare and exceptional
+    elif score >= 750:
         return "Very Good"
     elif score >= 700:
         return "Good"
-    elif score >= 600:
+    elif score >= 650:
         return "Fair"
-    elif score >= 500:
+    elif score >= 550:
         return "Needs Attention"
     elif score >= 400:
         return "Poor"

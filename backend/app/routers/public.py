@@ -1,11 +1,13 @@
 """Public profile and search endpoints."""
 
+import asyncio
+import logging
 import uuid
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, or_
 
-from app.database import get_db
+from app.database import get_db, async_session_factory
 from app.models.user import User
 from app.models.score import Score
 from app.models.finding import Finding
@@ -23,16 +25,37 @@ from app.services.scoring_engine import get_score_color, get_score_label
 from app.config import settings
 from app.middleware.rate_limit import public_limiter, check_rate_limit, get_client_ip
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/api/v1/public", tags=["public"])
+
+
+async def _background_passive_scan(name: str) -> None:
+    """Run a passive scan in the background with its own DB session."""
+    try:
+        from app.services.passive_scanner import run_passive_scan
+        async with async_session_factory() as db:
+            await run_passive_scan(db=db, name=name)
+            await db.commit()
+        logger.info("Background passive scan completed for '%s'", name)
+    except Exception as e:
+        logger.warning("Background passive scan failed for '%s': %s", name, e)
 
 
 @router.get("/search", response_model=PublicSearchResponse)
 async def search_public_profiles(
     request: Request,
     q: str = Query(min_length=2, max_length=255),
+    background_tasks: BackgroundTasks = BackgroundTasks(),
     db: AsyncSession = Depends(get_db),
 ):
-    """Search for a person's public score. Available to anyone."""
+    """Search for a person's public score. Available to anyone.
+
+    If a cached profile exists, returns it instantly.
+    If no cached profile is found and query looks like a name, triggers a
+    background passive scan and returns an empty result with scan_pending=true.
+    The caller should poll GET /api/v1/scan/lookup/{name} to check when the scan completes.
+    """
     check_rate_limit(get_client_ip(request), public_limiter)
     result = await db.execute(
         select(PublicProfile).where(
@@ -43,6 +66,14 @@ async def search_public_profiles(
         ).limit(20)
     )
     profiles = result.scalars().all()
+
+    scan_pending = False
+
+    # If no profiles found and query looks like a name, trigger BACKGROUND scan
+    # (non-blocking — returns immediately instead of waiting 60s)
+    if not profiles and len(q.strip()) >= 3 and " " in q.strip():
+        scan_pending = True
+        background_tasks.add_task(_background_passive_scan, q.strip())
 
     return PublicSearchResponse(
         results=[
@@ -61,6 +92,7 @@ async def search_public_profiles(
             for p in profiles
         ],
         total=len(profiles),
+        scan_pending=scan_pending,
     )
 
 

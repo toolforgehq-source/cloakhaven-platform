@@ -152,7 +152,7 @@ async def scan_web_presence(
     findings: list[Finding] = []
     seen_urls: set[str] = set()
 
-    # Build comprehensive search queries
+    # Build comprehensive search queries — expanded for maximum coverage
     queries = [
         # General web presence
         f'"{full_name}"',
@@ -162,8 +162,16 @@ async def scan_web_presence(
         f'"{full_name}" site:linkedin.com',
         f'"{full_name}" site:tiktok.com',
         f'"{full_name}" site:reddit.com',
+        f'"{full_name}" site:twitter.com OR site:x.com',
+        # Professional platforms
+        f'"{full_name}" site:glassdoor.com',
+        f'"{full_name}" site:medium.com OR site:substack.com',
+        f'"{full_name}" site:github.com',
         # Legal / court records
-        f'"{full_name}" court records OR arrest OR lawsuit OR indictment',
+        f'"{full_name}" arrested OR charged OR convicted OR indictment OR lawsuit',
+        f'"{full_name}" site:courtlistener.com OR site:unicourt.com OR site:pacermonitor.com',
+        # Professional achievements
+        f'"{full_name}" award OR recognition OR keynote OR speaker OR published',
         # News coverage
         f'"{full_name}" news OR interview OR featured OR announced',
     ]
