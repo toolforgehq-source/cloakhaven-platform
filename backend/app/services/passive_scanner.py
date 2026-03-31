@@ -603,9 +603,12 @@ async def run_passive_scan(
             sources_scanned.append(record.source)
 
     # ── 6. Classify + Disambiguate all results ──
+    # Cap web results to top 30 most relevant to avoid excessive LLM calls
+    if len(web_results) > 30:
+        web_results = web_results[:30]
     # Process web results
     need_disambiguation = _is_common_name(name) and identity_confidence < 0.85
-    semaphore = asyncio.Semaphore(5)  # Max 5 parallel LLM calls
+    semaphore = asyncio.Semaphore(3)  # Max 3 parallel LLM calls to avoid rate limits
 
     async def _process_web_result(item: dict) -> Optional[PassiveFinding]:
         url = item.get("link", "")
@@ -643,6 +646,7 @@ async def run_passive_scan(
                 text=combined_text,
                 source=source,
                 url=url,
+                bulk=True,
             )
 
         if classification.category == "neutral" and classification.confidence > 0.7:
@@ -673,6 +677,7 @@ async def run_passive_scan(
                 text=text,
                 source="twitter",
                 url=tweet.get("url", ""),
+                bulk=True,
             )
 
         if classification.category == "neutral":
@@ -719,6 +724,7 @@ async def run_passive_scan(
                 text=combined,
                 source="youtube",
                 url=video.get("url", ""),
+                bulk=True,
             )
 
         if classification.category == "neutral":

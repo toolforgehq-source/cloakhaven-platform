@@ -222,11 +222,14 @@ async def _classify_with_openai(text: str, source: str) -> Optional[Classificati
         return None
 
 
-# Model preference order — try Sonnet first for better accuracy, fall back to Haiku
+# Model preference order for interactive classification (user-facing, few items)
 _ANTHROPIC_MODELS = [
     "claude-sonnet-4-6",
     "claude-haiku-4-5",
 ]
+
+# Fast model for bulk classification (passive scans with 50-100+ items)
+_ANTHROPIC_BULK_MODEL = "claude-haiku-4-5"
 
 
 async def _classify_with_anthropic(text: str, source: str) -> Optional[ClassificationResult]:
@@ -241,7 +244,7 @@ async def _classify_with_anthropic(text: str, source: str) -> Optional[Classific
 async def _try_anthropic_model(text: str, source: str, model: str) -> Optional[ClassificationResult]:
     """Try classification with a specific Anthropic model."""
     try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        async with httpx.AsyncClient(timeout=15.0) as client:
             response = await client.post(
                 "https://api.anthropic.com/v1/messages",
                 headers={
@@ -291,8 +294,9 @@ async def _try_anthropic_model(text: str, source: str, model: str) -> Optional[C
         base_impact = CATEGORY_WEIGHTS.get(category, 0.0)
         snippet = text[:80] + "..." if len(text) > 80 else text
 
-        # Apply nuanced severity scaling
-        severity_score = int(result.get("severity_score", 5))
+        # Apply nuanced severity scaling (guard against None values)
+        raw_severity = result.get("severity_score")
+        severity_score = int(raw_severity) if raw_severity is not None else 5
         severity_score = max(1, min(10, severity_score))
         severity_mult = severity_score / 5.0  # 1=0.2x, 5=1.0x, 10=2.0x
         adjusted_impact = base_impact * severity_mult
@@ -318,14 +322,23 @@ async def classify_content_llm(
     source: str,
     url: Optional[str] = None,
     engagement_count: int = 0,
+    bulk: bool = False,
 ) -> ClassificationResult:
     """
     Classify content using LLM if available, falling back to rules.
     This is the async version that should be used when an LLM key is configured.
+
+    Args:
+        bulk: If True, use the faster/cheaper Haiku model for bulk classification
+              (passive scans with many items). Default False uses Sonnet for accuracy.
     """
     # Try LLM classification first
     if settings.LLM_PROVIDER == "anthropic" and settings.ANTHROPIC_API_KEY:
-        result = await _classify_with_anthropic(text, source)
+        if bulk:
+            # Use Haiku directly for bulk classification (10x faster, avoids rate limits)
+            result = await _try_anthropic_model(text, source, _ANTHROPIC_BULK_MODEL)
+        else:
+            result = await _classify_with_anthropic(text, source)
         if result:
             return result
     elif settings.OPENAI_API_KEY:
