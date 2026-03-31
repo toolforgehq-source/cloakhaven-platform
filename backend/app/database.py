@@ -2,7 +2,7 @@ import logging
 
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase
-from sqlalchemy import text
+from sqlalchemy import event, text
 from app.config import settings
 
 logger = logging.getLogger(__name__)
@@ -41,17 +41,16 @@ async def get_db():
             await session.close()
 
 
+# Register SQLite foreign key pragma once at module level (not inside init_db)
+if is_sqlite:
+    @event.listens_for(engine.sync_engine, "connect")
+    def _set_sqlite_pragma(dbapi_conn, connection_record):
+        cursor = dbapi_conn.cursor()
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.close()
+
+
 async def init_db():
-    # Enable SQLite foreign key enforcement (required for CASCADE deletes)
-    if is_sqlite:
-        from sqlalchemy import event, text
-
-        @event.listens_for(engine.sync_engine, "connect")
-        def _set_sqlite_pragma(dbapi_conn, connection_record):
-            cursor = dbapi_conn.cursor()
-            cursor.execute("PRAGMA foreign_keys=ON")
-            cursor.close()
-
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
