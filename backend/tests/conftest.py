@@ -50,8 +50,8 @@ async def client(db_session: AsyncSession):
     app.dependency_overrides[get_db] = _override_get_db
 
     # Reset rate limiter buckets so tests don't interfere with each other
-    from app.middleware.rate_limit import public_limiter, auth_limiter, partner_limiter, audit_limiter
-    for limiter in (public_limiter, auth_limiter, partner_limiter, audit_limiter):
+    from app.middleware.rate_limit import public_limiter, auth_limiter, partner_limiter, audit_limiter, scan_limiter
+    for limiter in (public_limiter, auth_limiter, partner_limiter, audit_limiter, scan_limiter):
         limiter._mem_tokens.clear()
         limiter._mem_last_time.clear()
 

@@ -7,8 +7,6 @@ and the public search all trigger passive scans.
 """
 
 import logging
-import time
-from collections import defaultdict
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, Field
 from typing import Optional
@@ -23,28 +21,19 @@ from app.models.public_profile import PublicProfile
 from app.services.passive_scanner import run_passive_scan
 from app.services.scoring_engine import get_score_color, get_score_label
 from app.config import settings
+from app.middleware.rate_limit import scan_limiter, check_rate_limit, check_daily_scan_cap, get_client_ip
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/scan", tags=["scan"])
 
-# Simple in-memory rate limiter for scan endpoints
-_rate_limit_store: dict[str, list[float]] = defaultdict(list)
-_RATE_LIMIT_WINDOW = 60  # seconds
-_RATE_LIMIT_MAX = 5  # max scan requests per window per IP
 
-
-def _check_scan_rate_limit(request: Request) -> None:
-    client_ip = request.client.host if request.client else "unknown"
-    now = time.time()
-    timestamps = _rate_limit_store[client_ip]
-    _rate_limit_store[client_ip] = [t for t in timestamps if now - t < _RATE_LIMIT_WINDOW]
-    if len(_rate_limit_store[client_ip]) >= _RATE_LIMIT_MAX:
-        raise HTTPException(
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail="Rate limit exceeded. Please wait before scanning again.",
-        )
-    _rate_limit_store[client_ip].append(now)
+def _check_scan_rate_limit(request: Request, name: str | None = None) -> None:
+    """Check scan-specific rate limits (persistent, hourly + daily cap)."""
+    client_ip = get_client_ip(request)
+    check_rate_limit(client_ip, scan_limiter, "Scan rate limit exceeded. Please wait before scanning again.")
+    if name:
+        check_daily_scan_cap(client_ip, name)
 
 
 # ── Request/Response Schemas ──
@@ -123,7 +112,7 @@ async def passive_scan(
     Returns cached results if scanned within the last 24 hours.
     Provide more identifiers (email, company, location) for higher accuracy.
     """
-    _check_scan_rate_limit(request)
+    _check_scan_rate_limit(request, name=body.name)
 
     # Check for recent cached result (within 24 hours)
     force_rescan = request.query_params.get("force", "").lower() == "true"
@@ -233,6 +222,7 @@ async def quick_lookup(
 
     if not profile:
         # No cached data — return empty result indicating fresh scan needed
+        # (lookup is read-only, no daily cap hit since no scan is triggered)
         return QuickLookupResponse(
             profile_id=uuid.uuid4(),  # Placeholder
             name=name,
@@ -277,6 +267,11 @@ async def batch_lookup(
     """
     _check_scan_rate_limit(request)
 
+    if len(names) > 10:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Maximum 10 names per batch request for unauthenticated users",
+        )
     if len(names) > 25:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

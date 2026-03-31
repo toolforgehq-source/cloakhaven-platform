@@ -23,7 +23,7 @@ from app.schemas.auth import MessageResponse
 from app.middleware.auth import get_current_user
 from app.services.scoring_engine import get_score_color, get_score_label
 from app.config import settings
-from app.middleware.rate_limit import public_limiter, check_rate_limit, get_client_ip
+from app.middleware.rate_limit import public_limiter, scan_limiter, check_rate_limit, check_daily_scan_cap, get_client_ip
 
 logger = logging.getLogger(__name__)
 
@@ -56,7 +56,8 @@ async def search_public_profiles(
     background passive scan and returns an empty result with scan_pending=true.
     The caller should poll GET /api/v1/scan/lookup/{name} to check when the scan completes.
     """
-    check_rate_limit(get_client_ip(request), public_limiter)
+    client_ip = get_client_ip(request)
+    check_rate_limit(client_ip, public_limiter)
     result = await db.execute(
         select(PublicProfile).where(
             or_(
@@ -72,6 +73,9 @@ async def search_public_profiles(
     # If no profiles found and query looks like a name, trigger BACKGROUND scan
     # (non-blocking — returns immediately instead of waiting 60s)
     if not profiles and len(q.strip()) >= 3 and " " in q.strip():
+        # Apply stricter scan-specific rate limits (expensive operation)
+        check_rate_limit(client_ip, scan_limiter, "Scan rate limit exceeded. Please wait before scanning new people.")
+        check_daily_scan_cap(client_ip, q.strip())
         scan_pending = True
         background_tasks.add_task(_background_passive_scan, q.strip())
 
