@@ -68,6 +68,7 @@ function App() {
           <Route path="/pricing" element={<Pricing />} />
           <Route path="/forgot-password" element={<ForgotPassword />} />
           <Route path="/profile/:username" element={<Profile />} />
+          <Route path="/score/:username" element={<Profile />} />
           <Route path="/scorecard/:userId" element={<ScorecardPage />} />
 
           {/* Protected routes */}

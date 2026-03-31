@@ -1,10 +1,24 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "@/lib/auth";
-import { api } from "@/lib/api";
-import { Settings as SettingsIcon, Upload, CreditCard, Shield, CheckCircle, Eye, EyeOff } from "lucide-react";
+import { api, SocialAccount } from "@/lib/api";
+import {
+  Settings as SettingsIcon, Upload, CreditCard, Shield, CheckCircle, Eye, EyeOff,
+  Twitter, Instagram, Facebook, Linkedin, Youtube, Github, Link2, X, Loader2
+} from "lucide-react";
 import Navbar from "@/components/Navbar";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
+
+const PLATFORMS = [
+  { key: "twitter", label: "X / Twitter", icon: Twitter, placeholder: "elonmusk" },
+  { key: "instagram", label: "Instagram", icon: Instagram, placeholder: "natgeo" },
+  { key: "facebook", label: "Facebook", icon: Facebook, placeholder: "zuck" },
+  { key: "linkedin", label: "LinkedIn", icon: Linkedin, placeholder: "williamhgates" },
+  { key: "tiktok", label: "TikTok", icon: Upload, placeholder: "khaby.lame" },
+  { key: "youtube", label: "YouTube", icon: Youtube, placeholder: "MrBeast" },
+  { key: "reddit", label: "Reddit", icon: Link2, placeholder: "spez" },
+  { key: "github", label: "GitHub", icon: Github, placeholder: "torvalds" },
+] as const;
 
 export default function Settings() {
   useDocumentTitle("Settings");
@@ -13,6 +27,61 @@ export default function Settings() {
   const [uploading, setUploading] = useState(false);
   const [uploadMsg, setUploadMsg] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
+
+  // Account linking state
+  const [accounts, setAccounts] = useState<SocialAccount[]>([]);
+  const [linkInputs, setLinkInputs] = useState<Record<string, string>>({});
+  const [linkingPlatform, setLinkingPlatform] = useState<string | null>(null);
+  const [disconnecting, setDisconnecting] = useState<string | null>(null);
+  const [linkError, setLinkError] = useState("");
+  const [linkSuccess, setLinkSuccess] = useState("");
+
+  useEffect(() => {
+    loadAccounts();
+  }, []);
+
+  const loadAccounts = async () => {
+    try {
+      const data = await api.getAccounts();
+      setAccounts(data.accounts);
+    } catch {
+      // silent
+    }
+  };
+
+  const handleLink = async (platform: string) => {
+    const username = linkInputs[platform]?.trim();
+    if (!username) return;
+    setLinkingPlatform(platform);
+    setLinkError("");
+    setLinkSuccess("");
+    try {
+      await api.linkAccount(platform, username);
+      setLinkSuccess(`${platform} account linked successfully`);
+      setLinkInputs((prev) => ({ ...prev, [platform]: "" }));
+      await loadAccounts();
+      setTimeout(() => setLinkSuccess(""), 3000);
+    } catch (err) {
+      setLinkError(err instanceof Error ? err.message : "Failed to link account");
+    } finally {
+      setLinkingPlatform(null);
+    }
+  };
+
+  const handleDisconnect = async (accountId: string, platform: string) => {
+    setDisconnecting(accountId);
+    setLinkError("");
+    try {
+      await api.disconnectAccount(accountId);
+      setLinkSuccess(`${platform} account disconnected`);
+      await loadAccounts();
+      setTimeout(() => setLinkSuccess(""), 3000);
+    } catch (err) {
+      setLinkError(err instanceof Error ? err.message : "Failed to disconnect");
+    } finally {
+      setDisconnecting(null);
+    }
+  };
 
   const handleUpload = async () => {
     const file = fileRef.current?.files?.[0];
@@ -120,6 +189,90 @@ export default function Settings() {
                 )}
               </button>
             </div>
+          </div>
+        </div>
+
+        {/* Connect Platforms */}
+        <div className="bg-slate-900 border border-slate-800 rounded-xl p-6">
+          <h2 className="font-semibold text-white mb-2 flex items-center gap-2">
+            <Link2 className="w-5 h-5 text-indigo-400" />
+            Connect Platforms
+          </h2>
+          <p className="text-sm text-slate-400 mb-4">
+            Link your social accounts to improve your score accuracy. More platforms = higher confidence.
+          </p>
+
+          {linkError && (
+            <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-3 text-sm text-red-400 mb-4">
+              {linkError}
+            </div>
+          )}
+          {linkSuccess && (
+            <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-lg p-3 text-sm text-emerald-400 mb-4">
+              {linkSuccess}
+            </div>
+          )}
+
+          <div className="space-y-3">
+            {PLATFORMS.map(({ key, label, icon: Icon, placeholder }) => {
+              const connected = accounts.find((a) => a.platform === key);
+              return (
+                <div key={key} className="bg-slate-800/50 rounded-lg p-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <Icon className="w-5 h-5 text-slate-400" />
+                      <div>
+                        <p className="text-sm font-medium text-white">{label}</p>
+                        {connected && connected.platform_username && (
+                          <p className="text-xs text-slate-500">@{connected.platform_username}</p>
+                        )}
+                      </div>
+                    </div>
+                    {connected ? (
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded-full">
+                          Connected
+                        </span>
+                        <button
+                          onClick={() => handleDisconnect(connected.id, label)}
+                          disabled={disconnecting === connected.id}
+                          className="text-slate-500 hover:text-red-400 transition p-1"
+                          title="Disconnect"
+                        >
+                          {disconnecting === connected.id ? (
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                          ) : (
+                            <X className="w-4 h-4" />
+                          )}
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="text"
+                          placeholder={placeholder}
+                          value={linkInputs[key] || ""}
+                          onChange={(e) => setLinkInputs((prev) => ({ ...prev, [key]: e.target.value }))}
+                          onKeyDown={(e) => e.key === "Enter" && handleLink(key)}
+                          className="w-36 sm:w-44 bg-slate-700 border border-slate-600 rounded-lg px-3 py-1.5 text-sm text-white placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                        />
+                        <button
+                          onClick={() => handleLink(key)}
+                          disabled={linkingPlatform === key || !linkInputs[key]?.trim()}
+                          className="bg-indigo-500 hover:bg-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed text-white px-3 py-1.5 rounded-lg text-sm font-medium transition whitespace-nowrap"
+                        >
+                          {linkingPlatform === key ? (
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                          ) : (
+                            "Connect"
+                          )}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
 

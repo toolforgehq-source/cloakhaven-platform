@@ -1,7 +1,7 @@
 """Public profile and search endpoints."""
 
 import uuid
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, or_
 
@@ -21,16 +21,19 @@ from app.schemas.auth import MessageResponse
 from app.middleware.auth import get_current_user
 from app.services.scoring_engine import get_score_color, get_score_label
 from app.config import settings
+from app.middleware.rate_limit import public_limiter, check_rate_limit, get_client_ip
 
 router = APIRouter(prefix="/api/v1/public", tags=["public"])
 
 
 @router.get("/search", response_model=PublicSearchResponse)
 async def search_public_profiles(
+    request: Request,
     q: str = Query(min_length=2, max_length=255),
     db: AsyncSession = Depends(get_db),
 ):
     """Search for a person's public score. Available to anyone."""
+    check_rate_limit(get_client_ip(request), public_limiter)
     result = await db.execute(
         select(PublicProfile).where(
             or_(

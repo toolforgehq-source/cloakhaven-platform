@@ -5,6 +5,7 @@ from app.models.score import Score, ScoreHistory
 from app.models.dispute import Dispute
 from app.models.public_profile import PublicProfile
 from app.models.audit_log import AuditLog, EmployerSearch
+from app.models.partner_key import PartnerApiKey
 
 __all__ = [
     "User",
@@ -16,4 +17,5 @@ __all__ = [
     "PublicProfile",
     "AuditLog",
     "EmployerSearch",
+    "PartnerApiKey",
 ]
