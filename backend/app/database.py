@@ -1,6 +1,11 @@
+import logging
+
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase
+from sqlalchemy import text
 from app.config import settings
+
+logger = logging.getLogger(__name__)
 
 is_sqlite = settings.DATABASE_URL.startswith("sqlite")
 
@@ -49,3 +54,23 @@ async def init_db():
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+
+    # Safe column migrations for existing deployments (create_all won't ALTER)
+    await _run_safe_migrations()
+
+
+async def _run_safe_migrations():
+    """Add columns that create_all() can't add to existing tables."""
+    migrations = [
+        ("disputes", "deadline_at", "DATETIME"),
+    ]
+    async with engine.begin() as conn:
+        for table, column, col_type in migrations:
+            try:
+                await conn.execute(
+                    text(f"ALTER TABLE {table} ADD COLUMN {column} {col_type}")
+                )
+                logger.info("Migration: added %s.%s", table, column)
+            except Exception:
+                # Column already exists — safe to ignore
+                pass
