@@ -195,8 +195,17 @@ class ApiClient {
   }
 
   // Payments
-  async createCheckout(priceType: "audit" | "subscriber" | "employer") {
-    return this.post<{ checkout_url: string; session_id: string }>("/api/v1/payments/checkout", { price_type: priceType });
+  async createCheckout(priceType: "lookup" | "unlimited", profileId?: string) {
+    return this.post<{ checkout_url: string; session_id: string }>("/api/v1/payments/checkout", {
+      price_type: priceType,
+      profile_id: profileId,
+    });
+  }
+
+  async checkReportAccess(profileId: string) {
+    return this.get<{ has_access: boolean; access_type: string | null; expires_at: string | null }>(
+      `/api/v1/payments/report-access/${profileId}`
+    );
   }
 
   async getSubscription() {
@@ -361,6 +370,9 @@ export interface PublicProfile {
   score_label: string | null;
   last_scanned_at: string | null;
   public_findings_summary: Record<string, unknown> | null;
+  total_findings_count: number;
+  sources_scanned_count: number;
+  is_locked: boolean;
 }
 
 export interface PublicSearchResponse {

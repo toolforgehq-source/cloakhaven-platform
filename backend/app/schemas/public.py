@@ -21,6 +21,10 @@ class PublicProfileResponse(BaseModel):
     score_label: Optional[str]
     last_scanned_at: Optional[datetime]
     public_findings_summary: Optional[dict]
+    # Paywall fields
+    total_findings_count: int = 0
+    sources_scanned_count: int = 0
+    is_locked: bool = False  # True when results are gated behind payment
 
     model_config = {"from_attributes": True}
 

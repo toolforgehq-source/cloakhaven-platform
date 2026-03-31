@@ -54,6 +54,9 @@ if is_sqlite:
 
 
 async def init_db():
+    # Import all models so Base.metadata knows about every table
+    import app.models.purchased_report  # noqa: F401
+
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
@@ -75,6 +78,8 @@ async def _run_safe_migrations():
         ("public_profiles", "posting_behavior_score", "INTEGER"),
         ("public_profiles", "total_findings_count", "INTEGER DEFAULT 0"),
         ("public_profiles", "scan_duration_seconds", "FLOAT"),
+        # Public profile: sources_scanned_count for teaser
+        ("public_profiles", "sources_scanned_count", "INTEGER DEFAULT 0"),
     ]
     async with engine.begin() as conn:
         for table, column, col_type in migrations:
