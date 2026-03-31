@@ -340,7 +340,7 @@ def _calculate_passive_score(findings: list[PassiveFinding]) -> dict:
     positive_count = 0
     negative_count = 0
     total_positive_boost = 0.0  # Track cumulative positive impact for hard cap
-    MAX_POSITIVE_BOOST = 100.0  # Hard cap: positives can add at most 100 points (750→850 max)
+    MAX_POSITIVE_BOOST = 150.0  # Hard cap: positives can add at most 150 points (750→900 theoretical max)
 
     for finding in findings:
         if finding.category == "neutral":
@@ -914,10 +914,22 @@ async def run_passive_scan(
                 all_findings.append(result)
 
     # Add public records (no async classification needed)
+    # Filter out court records that don't mention the target name — prevents
+    # false matches like "Helfrich v. Valdez Motel Corp" for Tim Cook
+    name_parts = name.lower().split()
+    last_name = name_parts[-1] if name_parts else ""
     for record in public_records:
         finding = _process_public_record(record)
-        if finding.category != "neutral":
-            all_findings.append(finding)
+        if finding.category == "neutral":
+            continue
+        # Court records must mention the person's last name in the case title
+        # to be considered relevant — otherwise it's a false match from CourtListener
+        if finding.category == "court_records":
+            title_lower = finding.title.lower()
+            if last_name and last_name not in title_lower:
+                logger.debug("Skipping court record (name not in title): %s", finding.title)
+                continue
+        all_findings.append(finding)
 
     # ── 7. Cross-platform corroboration ──
     all_findings = _apply_corroboration(all_findings)
