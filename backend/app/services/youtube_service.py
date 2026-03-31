@@ -17,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.models.finding import Finding
-from app.services.content_classifier import classify_content, classify_content_llm
+from app.services.content_classifier import classify_content_llm
 
 logger = logging.getLogger(__name__)
 

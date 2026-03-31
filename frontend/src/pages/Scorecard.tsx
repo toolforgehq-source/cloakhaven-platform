@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useParams, Link } from "react-router-dom";
 import { api, Scorecard as ScorecardData } from "@/lib/api";
-import { Shield, Copy, Check, ExternalLink } from "lucide-react";
+import { Shield, Copy, Check, ExternalLink, Linkedin, Twitter } from "lucide-react";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 
 export default function ScorecardPage() {
@@ -34,6 +34,44 @@ export default function ScorecardPage() {
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
+
+  const shareUrl = window.location.href;
+  const shareText = scorecard
+    ? `I scored ${scorecard.overall_score}/1000 (${scorecard.score_label}) on Cloak Haven — The Global Standard for Digital Reputation. Get your score:`
+    : "";
+
+  const handleShareLinkedIn = () => {
+    const url = `https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(shareUrl)}`;
+    window.open(url, "_blank", "width=600,height=500");
+  };
+
+  const handleShareTwitter = () => {
+    const url = `https://twitter.com/intent/tweet?text=${encodeURIComponent(shareText)}&url=${encodeURIComponent(shareUrl)}`;
+    window.open(url, "_blank", "width=600,height=500");
+  };
+
+  // Set OG meta tags dynamically
+  useEffect(() => {
+    if (!scorecard) return;
+    const setMeta = (property: string, content: string) => {
+      let el = document.querySelector(`meta[property="${property}"]`) as HTMLMetaElement | null;
+      if (!el) {
+        el = document.createElement("meta");
+        el.setAttribute("property", property);
+        document.head.appendChild(el);
+      }
+      el.setAttribute("content", content);
+    };
+    document.title = `${scorecard.display_name} — ${scorecard.overall_score} ${scorecard.score_label} | Cloak Haven`;
+    setMeta("og:title", `${scorecard.display_name} scored ${scorecard.overall_score}/1000 on Cloak Haven`);
+    setMeta("og:description", `${scorecard.score_label} digital reputation. ${scorecard.platforms_analyzed.length} platforms analyzed, ${scorecard.total_findings} findings. Get your score at Cloak Haven.`);
+    setMeta("og:url", shareUrl);
+    setMeta("og:type", "website");
+    setMeta("og:site_name", "Cloak Haven");
+    return () => {
+      document.title = "Cloak Haven";
+    };
+  }, [scorecard, shareUrl]);
 
   if (loading) {
     return (
@@ -170,21 +208,42 @@ export default function ScorecardPage() {
         </div>
 
         {/* Share actions */}
-        <div className="flex gap-3 mt-6">
+        <div className="grid grid-cols-2 gap-3 mt-6">
+          <button
+            onClick={handleShareLinkedIn}
+            className="bg-[#0A66C2] hover:bg-[#004182] text-white py-2.5 rounded-xl text-sm font-medium transition flex items-center justify-center gap-2"
+          >
+            <Linkedin className="w-4 h-4" />
+            Share on LinkedIn
+          </button>
+          <button
+            onClick={handleShareTwitter}
+            className="bg-slate-800 hover:bg-slate-700 text-white py-2.5 rounded-xl text-sm font-medium transition flex items-center justify-center gap-2"
+          >
+            <Twitter className="w-4 h-4" />
+            Share on X
+          </button>
           <button
             onClick={handleCopyLink}
-            className="flex-1 bg-slate-800 hover:bg-slate-700 text-white py-2.5 rounded-xl text-sm font-medium transition flex items-center justify-center gap-2"
+            className="bg-slate-800 hover:bg-slate-700 text-white py-2.5 rounded-xl text-sm font-medium transition flex items-center justify-center gap-2"
           >
             {copied ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
             {copied ? "Copied!" : "Copy Link"}
           </button>
           <Link
-            to="/search"
-            className="flex-1 bg-indigo-500 hover:bg-indigo-600 text-white py-2.5 rounded-xl text-sm font-medium transition flex items-center justify-center gap-2"
+            to="/register"
+            className="bg-indigo-500 hover:bg-indigo-600 text-white py-2.5 rounded-xl text-sm font-medium transition flex items-center justify-center gap-2"
           >
             <ExternalLink className="w-4 h-4" />
-            Search More
+            Get Your Score
           </Link>
+        </div>
+
+        {/* Powered by banner */}
+        <div className="text-center mt-4">
+          <p className="text-xs text-slate-500">
+            Powered by <Link to="/" className="text-indigo-400 hover:text-indigo-300">Cloak Haven</Link> — The Global Standard for Digital Reputation
+          </p>
         </div>
       </div>
     </PageShell>
