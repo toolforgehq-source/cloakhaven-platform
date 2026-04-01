@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { api, PublicProfile } from "@/lib/api";
-import { Search as SearchIcon, User, Shield, ChevronDown, ChevronUp, ExternalLink, Scale, Newspaper, Award, AlertTriangle, FileText, Clock, Lock, Loader2 } from "lucide-react";
+import { Search as SearchIcon, User, Shield, ChevronDown, ChevronUp, ExternalLink, Scale, Newspaper, Award, AlertTriangle, FileText, Clock, Lock, Loader2, SlidersHorizontal } from "lucide-react";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
@@ -104,6 +104,10 @@ export default function Search() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [checkoutLoading, setCheckoutLoading] = useState<string | null>(null);
+  const [showContext, setShowContext] = useState(false);
+  const [company, setCompany] = useState("");
+  const [location, setLocation] = useState("");
+  const [linkedinUrl, setLinkedinUrl] = useState("");
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const pollStartRef = useRef<number>(0);
 
@@ -169,6 +173,14 @@ export default function Search() {
     };
   }, []);
 
+  const getSearchContext = useCallback(() => {
+    const ctx: { company?: string; location?: string; linkedin_url?: string } = {};
+    if (company.trim()) ctx.company = company.trim();
+    if (location.trim()) ctx.location = location.trim();
+    if (linkedinUrl.trim()) ctx.linkedin_url = linkedinUrl.trim();
+    return Object.keys(ctx).length > 0 ? ctx : undefined;
+  }, [company, location, linkedinUrl]);
+
   const startPolling = useCallback((searchQuery: string) => {
     stopPolling();
     setScanning(true);
@@ -181,7 +193,7 @@ export default function Search() {
         return;
       }
       try {
-        const data = await api.searchPublic(searchQuery);
+        const data = await api.searchPublic(searchQuery, getSearchContext());
         if (data.results.length > 0) {
           setResults(data.results);
           stopPolling();
@@ -190,7 +202,7 @@ export default function Search() {
         // Keep polling on transient errors
       }
     }, POLL_INTERVAL_MS);
-  }, [stopPolling]);
+  }, [stopPolling, getSearchContext]);
 
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -200,7 +212,7 @@ export default function Search() {
     setErrorMessage(null);
     stopPolling();
     try {
-      const data = await api.searchPublic(query);
+      const data = await api.searchPublic(query, getSearchContext());
       setResults(data.results);
 
       if (data.scan_pending && data.results.length === 0) {
@@ -331,25 +343,79 @@ export default function Search() {
           </div>
         ) : (
           <>
-            <form onSubmit={handleSearch} className="flex gap-3 mb-8">
-              <div className="flex-1 relative">
-                <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500" />
-                <input
-                  type="text"
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  className="w-full bg-slate-900 border border-slate-800 rounded-xl pl-11 pr-4 py-3 text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                  placeholder="Search by name or username..."
-                  minLength={2}
-                />
+            <form onSubmit={handleSearch} className="mb-8">
+              <div className="flex gap-3">
+                <div className="flex-1 relative">
+                  <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500" />
+                  <input
+                    type="text"
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    className="w-full bg-slate-900 border border-slate-800 rounded-xl pl-11 pr-4 py-3 text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                    placeholder="Search by name or username..."
+                    minLength={2}
+                  />
+                </div>
+                <button
+                  type="submit"
+                  disabled={loading || query.length < 2}
+                  className="bg-indigo-500 hover:bg-indigo-600 disabled:opacity-50 text-white px-6 py-3 rounded-xl text-sm font-medium transition"
+                >
+                  {loading ? "Searching..." : "Search"}
+                </button>
               </div>
+
               <button
-                type="submit"
-                disabled={loading || query.length < 2}
-                className="bg-indigo-500 hover:bg-indigo-600 disabled:opacity-50 text-white px-6 py-3 rounded-xl text-sm font-medium transition"
+                type="button"
+                onClick={() => setShowContext(!showContext)}
+                className="flex items-center gap-1.5 mt-3 text-xs text-slate-500 hover:text-slate-300 transition"
               >
-                {loading ? "Searching..." : "Search"}
+                <SlidersHorizontal className="w-3.5 h-3.5" />
+                {showContext ? "Hide" : "Refine search"} — add context for better accuracy
+                {(company || location || linkedinUrl) && (
+                  <span className="bg-indigo-500/20 text-indigo-400 px-1.5 py-0.5 rounded text-[10px] font-medium">
+                    {[company, location, linkedinUrl].filter(Boolean).length} added
+                  </span>
+                )}
               </button>
+
+              {showContext && (
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-3 p-4 bg-slate-900/50 border border-slate-800 rounded-xl">
+                  <div>
+                    <label className="block text-xs text-slate-500 mb-1">Company</label>
+                    <input
+                      type="text"
+                      value={company}
+                      onChange={(e) => setCompany(e.target.value)}
+                      className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                      placeholder="e.g. Google"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-slate-500 mb-1">City / State</label>
+                    <input
+                      type="text"
+                      value={location}
+                      onChange={(e) => setLocation(e.target.value)}
+                      className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                      placeholder="e.g. San Francisco, CA"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-slate-500 mb-1">LinkedIn URL</label>
+                    <input
+                      type="text"
+                      value={linkedinUrl}
+                      onChange={(e) => setLinkedinUrl(e.target.value)}
+                      className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                      placeholder="linkedin.com/in/..."
+                    />
+                  </div>
+                  <p className="col-span-full text-[11px] text-slate-600">
+                    Optional — adding context helps us find the right person, especially for common names.
+                  </p>
+                </div>
+              )}
             </form>
 
             {scanning && results.length === 0 && (

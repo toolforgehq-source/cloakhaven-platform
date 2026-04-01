@@ -178,8 +178,12 @@ class ApiClient {
   }
 
   // Public
-  async searchPublic(query: string) {
-    return this.get<PublicSearchResponse>(`/api/v1/public/search?q=${encodeURIComponent(query)}`);
+  async searchPublic(query: string, context?: { company?: string; location?: string; linkedin_url?: string }) {
+    const params = new URLSearchParams({ q: query });
+    if (context?.company) params.set("company", context.company);
+    if (context?.location) params.set("location", context.location);
+    if (context?.linkedin_url) params.set("linkedin_url", context.linkedin_url);
+    return this.get<PublicSearchResponse>(`/api/v1/public/search?${params.toString()}`);
   }
 
   async getPublicProfile(username: string) {
