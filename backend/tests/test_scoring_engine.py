@@ -235,3 +235,82 @@ def test_negative_categories_have_negative_weight():
 def test_base_score_is_reasonable():
     """Authenticated base score should be within FICO-like range."""
     assert 700 <= BASE_SCORE <= 900
+
+
+# ── Passive accuracy formula ───────────────────────────────────────────
+
+def test_passive_accuracy_all_scanned():
+    """If all 16 sources are scanned, coverage should be 100%."""
+    from app.services.passive_scanner import _calculate_passive_accuracy
+    all_sources = [
+        "serpapi_web", "serpapi_news", "twitter_mentions",
+        "youtube_search", "enrichment", "courtlistener",
+        "sec_edgar", "semantic_scholar", "github", "wikipedia",
+        "stack_exchange", "wayback_machine",
+        "linkedin", "facebook", "instagram", "reddit",
+    ]
+    result = _calculate_passive_accuracy(
+        sources_scanned=all_sources,
+        identity_confidence=0.9,
+        findings_count=20,
+        sources_attempted=all_sources,
+    )
+    assert result >= 90.0, f"All sources scanned should give 90%+, got {result}"
+
+
+def test_passive_accuracy_partial_credit():
+    """Sources attempted but empty should get partial credit (higher than 0)."""
+    from app.services.passive_scanner import _calculate_passive_accuracy
+
+    # Only attempted, nothing scanned
+    result_attempted = _calculate_passive_accuracy(
+        sources_scanned=[],
+        identity_confidence=0.5,
+        findings_count=0,
+        sources_attempted=["serpapi_web", "serpapi_news", "twitter_mentions",
+                           "linkedin", "facebook", "instagram", "reddit"],
+    )
+
+    # Nothing attempted at all
+    result_empty = _calculate_passive_accuracy(
+        sources_scanned=[],
+        identity_confidence=0.5,
+        findings_count=0,
+        sources_attempted=[],
+    )
+
+    assert result_attempted > result_empty, (
+        f"Attempted sources should score higher: {result_attempted} vs {result_empty}"
+    )
+
+
+def test_passive_accuracy_social_platforms_boost():
+    """Adding social platform hits should meaningfully raise accuracy."""
+    from app.services.passive_scanner import _calculate_passive_accuracy
+
+    base_sources = ["serpapi_web", "courtlistener", "sec_edgar"]
+    base_attempted = base_sources + ["serpapi_news", "twitter_mentions",
+                                      "youtube_search", "enrichment",
+                                      "semantic_scholar", "github", "wikipedia",
+                                      "stack_exchange", "wayback_machine",
+                                      "linkedin", "facebook", "instagram", "reddit"]
+
+    # Without social platforms
+    result_without = _calculate_passive_accuracy(
+        sources_scanned=base_sources,
+        identity_confidence=0.55,
+        findings_count=7,
+        sources_attempted=base_attempted,
+    )
+
+    # With social platforms scanned
+    result_with = _calculate_passive_accuracy(
+        sources_scanned=base_sources + ["linkedin", "facebook", "instagram", "reddit"],
+        identity_confidence=0.55,
+        findings_count=7,
+        sources_attempted=base_attempted,
+    )
+
+    assert result_with > result_without, (
+        f"Social platforms should boost accuracy: {result_with} vs {result_without}"
+    )

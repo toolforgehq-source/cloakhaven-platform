@@ -142,13 +142,17 @@ async def _expanded_web_search(name: str, context: dict) -> list[dict]:
     company = context.get("company", "")
     location = context.get("location", "")
 
-    # Build targeted queries
+    # Build targeted queries — each social platform gets its own query
+    # so we can track which platforms returned data individually
     queries_google = [
         # Core identity
         f'"{name}"',
-        # Social platforms (combined to reduce query count)
-        f'"{name}" site:linkedin.com OR site:twitter.com OR site:instagram.com',
-        f'"{name}" site:facebook.com OR site:tiktok.com OR site:reddit.com',
+        # Individual social platforms (tracked separately for accuracy)
+        f'"{name}" site:linkedin.com',
+        f'"{name}" site:facebook.com',
+        f'"{name}" site:instagram.com',
+        f'"{name}" site:reddit.com',
+        f'"{name}" site:tiktok.com',
         # Professional
         f'"{name}" site:glassdoor.com OR site:medium.com OR site:github.com',
         # Legal / court records
@@ -466,8 +470,10 @@ def _calculate_passive_accuracy(
     possible_sources = {
         "serpapi_web", "serpapi_news", "twitter_mentions",
         "youtube_search", "enrichment", "courtlistener",
-        "sec_edgar", "uspto", "semantic_scholar", "opencorporates",
-        "github", "wikipedia",
+        "sec_edgar", "semantic_scholar", "github", "wikipedia",
+        "stack_exchange", "wayback_machine",
+        # Social platforms discovered via SerpAPI site: searches
+        "linkedin", "facebook", "instagram", "reddit",
     }
     scanned_set = set(sources_scanned)
     attempted_set = set(sources_attempted) if sources_attempted else set()
@@ -482,16 +488,19 @@ def _calculate_passive_accuracy(
     breadth_score = coverage_points / len(possible_sources) * 100
 
     # Findings depth: more findings = more statistically meaningful
+    # Recalibrated: even a few findings provides meaningful signal
     if findings_count == 0:
         depth_score = 0.0
-    elif findings_count <= 5:
-        depth_score = 30.0
+    elif findings_count <= 3:
+        depth_score = 40.0
+    elif findings_count <= 8:
+        depth_score = 60.0
     elif findings_count <= 15:
-        depth_score = 55.0
-    elif findings_count <= 30:
         depth_score = 75.0
+    elif findings_count <= 30:
+        depth_score = 85.0
     elif findings_count <= 50:
-        depth_score = 90.0
+        depth_score = 95.0
     else:
         depth_score = 100.0
 
@@ -682,12 +691,14 @@ async def run_passive_scan(
     # Web search is always attempted if SerpAPI key exists
     if settings.SERPAPI_API_KEY:
         sources_attempted.extend(["serpapi_web", "serpapi_news"])
+        # Social platform site: searches are attempted via SerpAPI
+        sources_attempted.extend(["linkedin", "facebook", "instagram", "reddit"])
     if settings.TWITTER_BEARER_TOKEN:
         sources_attempted.append("twitter_mentions")
     if settings.YOUTUBE_API_KEY:
         sources_attempted.append("youtube_search")
     # Public records sources are always attempted (free APIs, no keys needed)
-    sources_attempted.extend(["courtlistener", "sec_edgar", "uspto", "semantic_scholar", "opencorporates", "github", "wikipedia"])
+    sources_attempted.extend(["courtlistener", "sec_edgar", "semantic_scholar", "github", "wikipedia", "stack_exchange", "wayback_machine"])
     if settings.PEOPLEDATALABS_API_KEY:
         sources_attempted.append("enrichment")
 
@@ -695,6 +706,18 @@ async def run_passive_scan(
         sources_scanned.append("serpapi_web")
         if any(r.get("_is_news") for r in web_results):
             sources_scanned.append("serpapi_news")
+        # Track individual social platforms found in web results
+        _social_domains = {
+            "linkedin.com": "linkedin",
+            "facebook.com": "facebook",
+            "instagram.com": "instagram",
+            "reddit.com": "reddit",
+        }
+        for result in web_results:
+            url = result.get("link", "").lower()
+            for domain, platform in _social_domains.items():
+                if domain in url and platform not in sources_scanned:
+                    sources_scanned.append(platform)
     if twitter_mentions:
         sources_scanned.append("twitter_mentions")
     if youtube_results:

@@ -4,9 +4,11 @@ Public Data Sources — Free APIs
 Pulls data from free public record databases to enrich scoring:
 - CourtListener (federal court records)
 - SEC EDGAR (corporate filings)
-- USPTO (patents)
 - Semantic Scholar (academic publications)
-- OpenCorporates (business registrations)
+- GitHub (public profiles + repos)
+- Wikipedia (notability check)
+- Stack Exchange (technical Q&A profiles)
+- Wayback Machine (archived/deleted content)
 
 Each source is independent — if one fails, the others continue.
 """
@@ -171,64 +173,73 @@ async def _sec_fulltext_search(name: str) -> Optional[httpx.Response]:
 
 
 # ============================================================
-# USPTO — Patents (free via PatentsView API)
-# https://api.patentsview.org/patents/query
+# STACK EXCHANGE — Technical Q&A Profiles (free, no API key)
+# https://api.stackexchange.com/2.3/
 # ============================================================
 
-async def search_patents(name: str, max_results: int = 10) -> list[PublicRecord]:
-    """Search USPTO PatentsView for patents by an inventor."""
+async def search_stack_exchange(name: str, max_results: int = 5) -> list[PublicRecord]:
+    """Search Stack Exchange (Stack Overflow + other sites) for user profiles."""
     records: list[PublicRecord] = []
-    parts = name.split()
-    if len(parts) < 2:
-        return records
-
-    first_name = parts[0]
-    last_name = parts[-1]
-
     try:
         async with httpx.AsyncClient(timeout=15.0) as client:
-            response = await client.post(
-                "https://api.patentsview.org/patents/query",
-                json={
-                    "q": {
-                        "_and": [
-                            {"inventor_first_name": first_name},
-                            {"inventor_last_name": last_name},
-                        ]
-                    },
-                    "f": [
-                        "patent_number", "patent_title", "patent_date",
-                        "inventor_first_name", "inventor_last_name",
-                    ],
-                    "o": {"per_page": min(max_results, 25)},
+            # Search Stack Overflow users by name
+            response = await client.get(
+                "https://api.stackexchange.com/2.3/users",
+                params={
+                    "inname": name,
+                    "site": "stackoverflow",
+                    "pagesize": min(max_results, 10),
+                    "order": "desc",
+                    "sort": "reputation",
+                    "filter": "default",
                 },
-                headers={"Content-Type": "application/json"},
             )
 
         if response.status_code != 200:
-            logger.warning("USPTO API error: %d", response.status_code)
+            logger.warning("Stack Exchange API error: %d", response.status_code)
             return records
 
         data = response.json()
-        patents = data.get("patents", [])
+        users = data.get("items", [])
 
-        for patent in patents or []:
-            patent_num = patent.get("patent_number", "")
-            title = patent.get("patent_title", "")
-            date = patent.get("patent_date", "")
+        name_lower = name.lower()
+        for user in users:
+            display_name = user.get("display_name", "")
+            # Only include if the name reasonably matches
+            display_lower = display_name.lower()
+            if name_lower not in display_lower and display_lower not in name_lower:
+                # Check if last name matches at minimum
+                name_parts = name_lower.split()
+                last_name = name_parts[-1] if name_parts else ""
+                if last_name and last_name not in display_lower:
+                    continue
+
+            reputation = user.get("reputation", 0)
+            profile_url = user.get("link", "")
+            user_id = user.get("user_id", "")
+            badge_counts = user.get("badge_counts", {})
+            gold = badge_counts.get("gold", 0)
+            silver = badge_counts.get("silver", 0)
+            bronze = badge_counts.get("bronze", 0)
+
+            desc = f"Stack Overflow: {display_name}. Reputation: {reputation:,}."
+            if gold or silver or bronze:
+                desc += f" Badges: {gold}g/{silver}s/{bronze}b."
+
+            # Higher reputation = higher relevance
+            relevance = min(0.5 + (reputation / 10000), 1.0)
 
             records.append(PublicRecord(
-                source="uspto",
-                record_type="patent",
-                title=f"Patent: {title[:200]}",
-                description=f"US Patent #{patent_num}",
-                url=f"https://patents.google.com/patent/US{patent_num}",
-                date=date,
-                relevance_score=0.8,
+                source="stack_exchange",
+                record_type="business",  # Maps to professional_achievement
+                title=f"Stack Overflow: {display_name} ({reputation:,} rep)"[:300],
+                description=desc[:500],
+                url=profile_url or f"https://stackoverflow.com/users/{user_id}",
+                relevance_score=relevance,
             ))
 
     except Exception as e:
-        logger.warning("USPTO search failed for '%s': %s", name, e)
+        logger.warning("Stack Exchange search failed for '%s': %s", name, e)
 
     return records
 
@@ -302,13 +313,14 @@ async def search_publications(name: str, max_results: int = 10) -> list[PublicRe
 # ============================================================
 # OPENCORPORATES — Business Registrations (free tier)
 # https://api.opencorporates.com/v0.4/
+# NOTE: Free tier frequently returns 401. This is best-effort.
 # ============================================================
 
 async def search_business_registrations(name: str, max_results: int = 5) -> list[PublicRecord]:
     """Search OpenCorporates for businesses associated with a person (as officer)."""
     records: list[PublicRecord] = []
     try:
-        async with httpx.AsyncClient(timeout=15.0) as client:
+        async with httpx.AsyncClient(timeout=10.0) as client:
             response = await client.get(
                 "https://api.opencorporates.com/v0.4/officers/search",
                 params={
@@ -546,19 +558,20 @@ async def search_all_public_records(name: str) -> list[PublicRecord]:
     results = await asyncio.gather(
         search_court_records(name),
         search_sec_filings(name),
-        search_patents(name),
         search_publications(name),
         search_business_registrations(name),
         search_github_profile(name),
         search_wikipedia(name),
         search_wayback_machine(name),
+        search_stack_exchange(name),
         return_exceptions=True,
     )
 
     all_records: list[PublicRecord] = []
     source_names = [
-        "CourtListener", "SEC EDGAR", "USPTO", "Semantic Scholar",
+        "CourtListener", "SEC EDGAR", "Semantic Scholar",
         "OpenCorporates", "GitHub", "Wikipedia", "Wayback Machine",
+        "Stack Exchange",
     ]
 
     for i, result in enumerate(results):
