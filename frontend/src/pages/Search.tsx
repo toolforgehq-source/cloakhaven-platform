@@ -108,6 +108,51 @@ export default function Search() {
   const pollStartRef = useRef<number>(0);
 
   const paymentStatus = searchParams.get("payment");
+  const sessionId = searchParams.get("session_id");
+  const returnedProfileId = searchParams.get("profile_id");
+  const [verifying, setVerifying] = useState(false);
+  const [paymentVerified, setPaymentVerified] = useState(false);
+
+  // Verify payment session when returning from Stripe checkout
+  useEffect(() => {
+    if (paymentStatus !== "success" || !sessionId || !user) return;
+    let cancelled = false;
+
+    const verify = async () => {
+      setVerifying(true);
+      try {
+        const result = await api.verifyPaymentSession(sessionId);
+        if (cancelled) return;
+        if (result.verified) {
+          setPaymentVerified(true);
+          toast("success", result.message || "Payment verified! Report unlocked.");
+          // Re-fetch the profile to show unlocked results
+          if (returnedProfileId) {
+            try {
+              const data = await api.searchPublic(returnedProfileId);
+              if (!cancelled && data.results.length > 0) {
+                setResults(data.results);
+                setSearched(true);
+              }
+            } catch {
+              // Profile ID search might not work — user can re-search manually
+            }
+          }
+        } else {
+          toast("error", result.message || "Payment verification failed. Please try again.");
+        }
+      } catch {
+        if (!cancelled) {
+          toast("error", "Could not verify payment. Please refresh or search again.");
+        }
+      } finally {
+        if (!cancelled) setVerifying(false);
+      }
+    };
+
+    verify();
+    return () => { cancelled = true; };
+  }, [paymentStatus, sessionId, user]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const stopPolling = useCallback(() => {
     if (pollRef.current) {
@@ -235,8 +280,22 @@ export default function Search() {
       <main className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
         {paymentStatus === "success" && (
           <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-4 mb-8 flex items-center gap-3">
-            <Shield className="w-5 h-5 text-emerald-400 shrink-0" />
-            <p className="text-sm text-emerald-300">Payment successful! Your report is now unlocked.</p>
+            {verifying ? (
+              <>
+                <Loader2 className="w-5 h-5 text-emerald-400 shrink-0 animate-spin" />
+                <p className="text-sm text-emerald-300">Verifying payment and unlocking your report...</p>
+              </>
+            ) : paymentVerified ? (
+              <>
+                <Shield className="w-5 h-5 text-emerald-400 shrink-0" />
+                <p className="text-sm text-emerald-300">Payment verified! Your report is now unlocked. Search the name again to view it.</p>
+              </>
+            ) : (
+              <>
+                <Shield className="w-5 h-5 text-emerald-400 shrink-0" />
+                <p className="text-sm text-emerald-300">Payment successful! Search the name again to view your unlocked report.</p>
+              </>
+            )}
           </div>
         )}
 

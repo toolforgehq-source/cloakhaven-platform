@@ -123,7 +123,7 @@ async def create_checkout_session(
         customer=current_user.stripe_customer_id,
         mode=config["mode"],
         line_items=config["line_items"],
-        success_url=f"{settings.FRONTEND_URL}/search?payment=success&profile_id={request.profile_id or ''}",
+        success_url=f"{settings.FRONTEND_URL}/search?payment=success&session_id={{CHECKOUT_SESSION_ID}}&profile_id={request.profile_id or ''}",
         cancel_url=f"{settings.FRONTEND_URL}/search?payment=cancelled",
         metadata={
             "user_id": str(current_user.id),
@@ -220,6 +220,112 @@ async def stripe_webhook(
             await db.commit()
 
     return {"received": True}
+
+
+class VerifySessionRequest(BaseModel):
+    session_id: str
+
+
+class VerifySessionResponse(BaseModel):
+    verified: bool
+    access_type: Optional[str] = None  # "purchased" or "subscriber"
+    profile_id: Optional[str] = None
+    message: str = ""
+
+
+@router.post("/verify-session", response_model=VerifySessionResponse)
+async def verify_checkout_session(
+    request: VerifySessionRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Verify a Stripe checkout session and grant access.
+
+    This is the primary way to grant access after payment. It retrieves the
+    session from Stripe, confirms payment was completed, and creates the
+    PurchasedReport or activates the subscription. Works regardless of whether
+    the webhook is configured.
+    """
+    import stripe
+    stripe.api_key = settings.STRIPE_SECRET_KEY
+
+    if not settings.STRIPE_SECRET_KEY:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Payment processing not configured",
+        )
+
+    try:
+        session = stripe.checkout.Session.retrieve(request.session_id)
+    except Exception:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid checkout session",
+        )
+
+    # Verify this session belongs to the current user
+    session_user_id = session.metadata.get("user_id", "")
+    if session_user_id != str(current_user.id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Session does not belong to this user",
+        )
+
+    # Check payment status
+    if session.payment_status != "paid":
+        return VerifySessionResponse(
+            verified=False,
+            message="Payment has not been completed yet",
+        )
+
+    price_type = session.metadata.get("price_type", "")
+    profile_id = session.metadata.get("profile_id", "")
+
+    if price_type == "lookup" and profile_id:
+        # Upsert: extend expiration if already purchased
+        existing = await db.execute(
+            select(PurchasedReport).where(
+                PurchasedReport.user_id == current_user.id,
+                PurchasedReport.profile_id == uuid.UUID(profile_id),
+            )
+        )
+        existing_purchase = existing.scalar_one_or_none()
+        if existing_purchase:
+            existing_purchase.expires_at = datetime.utcnow() + timedelta(days=REPORT_ACCESS_DAYS)
+            existing_purchase.stripe_session_id = session.id
+            existing_purchase.purchased_at = datetime.utcnow()
+        else:
+            purchased = PurchasedReport(
+                user_id=current_user.id,
+                profile_id=uuid.UUID(profile_id),
+                stripe_session_id=session.id,
+                purchased_at=datetime.utcnow(),
+                expires_at=datetime.utcnow() + timedelta(days=REPORT_ACCESS_DAYS),
+            )
+            db.add(purchased)
+        await db.commit()
+        return VerifySessionResponse(
+            verified=True,
+            access_type="purchased",
+            profile_id=profile_id,
+            message="Report unlocked for 30 days",
+        )
+
+    elif price_type == "unlimited":
+        current_user.subscription_tier = "subscriber"
+        current_user.subscription_status = "active"
+        current_user.stripe_subscription_id = session.subscription
+        await db.commit()
+        return VerifySessionResponse(
+            verified=True,
+            access_type="subscriber",
+            message="Unlimited subscription activated",
+        )
+
+    return VerifySessionResponse(
+        verified=False,
+        message="Unknown payment type",
+    )
 
 
 @router.get("/subscription", response_model=SubscriptionResponse)

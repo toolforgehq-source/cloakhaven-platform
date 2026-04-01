@@ -208,6 +208,13 @@ class ApiClient {
     );
   }
 
+  async verifyPaymentSession(sessionId: string) {
+    return this.post<{ verified: boolean; access_type: string | null; profile_id: string | null; message: string }>(
+      "/api/v1/payments/verify-session",
+      { session_id: sessionId }
+    );
+  }
+
   async getSubscription() {
     return this.get<{ tier: string; status: string; stripe_customer_id: string | null }>("/api/v1/payments/subscription");
   }
