@@ -467,6 +467,74 @@ async def search_wikipedia(name: str) -> list[PublicRecord]:
 
 
 # ============================================================
+# WAYBACK MACHINE — Deleted/Cached Content (free CDX API)
+# https://web.archive.org/cdx/search/cdx
+# ============================================================
+
+async def search_wayback_machine(name: str, max_results: int = 10) -> list[PublicRecord]:
+    """
+    Search the Wayback Machine CDX API for archived pages mentioning a person.
+
+    This catches content that has been deleted from the live web but was
+    captured by the Internet Archive. Useful for discovering scrubbed social
+    media posts, deleted blog entries, removed news articles, etc.
+    """
+    records: list[PublicRecord] = []
+
+    # Search for archived pages with the person's name in the URL or as a query
+    search_urls = [
+        f"https://web.archive.org/cdx/search/cdx?url=*.twitter.com/*{name.replace(' ', '')}*&output=json&limit={max_results}&fl=timestamp,original,statuscode&filter=statuscode:200",
+        f"https://web.archive.org/cdx/search/cdx?url=*.reddit.com/*{name.replace(' ', '')}*&output=json&limit={max_results}&fl=timestamp,original,statuscode&filter=statuscode:200",
+    ]
+
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            for search_url in search_urls:
+                try:
+                    response = await client.get(
+                        search_url,
+                        headers={"User-Agent": "CloakHaven/1.0 (digital reputation scoring)"},
+                    )
+                    if response.status_code != 200:
+                        continue
+
+                    data = response.json()
+                    if not data or len(data) <= 1:
+                        continue
+
+                    # First row is header, rest are results
+                    for row in data[1:max_results + 1]:
+                        if len(row) < 2:
+                            continue
+                        timestamp = row[0]
+                        original_url = row[1]
+
+                        # Format timestamp: 20230415120000 -> 2023-04-15
+                        date_str = None
+                        if len(timestamp) >= 8:
+                            date_str = f"{timestamp[:4]}-{timestamp[4:6]}-{timestamp[6:8]}"
+
+                        wayback_url = f"https://web.archive.org/web/{timestamp}/{original_url}"
+
+                        records.append(PublicRecord(
+                            source="wayback_machine",
+                            record_type="cached_content",
+                            title=f"Archived page: {original_url[:200]}",
+                            description=f"Cached version from {date_str or 'unknown date'}. Original URL: {original_url[:300]}",
+                            url=wayback_url,
+                            date=date_str,
+                            relevance_score=0.6,
+                        ))
+                except Exception:
+                    continue
+
+    except Exception as e:
+        logger.warning("Wayback Machine search failed for '%s': %s", name, e)
+
+    return records
+
+
+# ============================================================
 # UNIFIED SEARCH — Run all public data sources concurrently
 # ============================================================
 
@@ -483,13 +551,14 @@ async def search_all_public_records(name: str) -> list[PublicRecord]:
         search_business_registrations(name),
         search_github_profile(name),
         search_wikipedia(name),
+        search_wayback_machine(name),
         return_exceptions=True,
     )
 
     all_records: list[PublicRecord] = []
     source_names = [
         "CourtListener", "SEC EDGAR", "USPTO", "Semantic Scholar",
-        "OpenCorporates", "GitHub", "Wikipedia",
+        "OpenCorporates", "GitHub", "Wikipedia", "Wayback Machine",
     ]
 
     for i, result in enumerate(results):

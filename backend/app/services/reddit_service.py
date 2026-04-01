@@ -17,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.models.finding import Finding
-from app.services.content_classifier import classify_content
+from app.services.content_classifier import classify_content_llm
 
 logger = logging.getLogger(__name__)
 
@@ -171,7 +171,7 @@ async def scan_reddit_account(
         permalink = post.get("permalink", "")
         url = f"https://reddit.com{permalink}" if permalink else ""
 
-        classification = classify_content(
+        classification = await classify_content_llm(
             text=text,
             source="reddit",
             url=url,
@@ -226,7 +226,7 @@ async def scan_reddit_account(
         permalink = comment.get("permalink", "")
         url = f"https://reddit.com{permalink}" if permalink else ""
 
-        classification = classify_content(
+        classification = await classify_content_llm(
             text=text,
             source="reddit",
             url=url,

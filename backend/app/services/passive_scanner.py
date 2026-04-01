@@ -300,7 +300,7 @@ async def _search_youtube_by_name(name: str) -> list[dict]:
 # SCORING ENGINE FOR PASSIVE SCANS
 # ============================================================
 
-BASE_SCORE = 750  # Start "good" not "excellent" — like FICO where 750 is solid
+BASE_SCORE = 850  # Aligned with active scoring — everyone starts strong like FICO
 
 # Import scoring constants
 from app.services.scoring_engine import (
@@ -444,23 +444,25 @@ def _calculate_passive_accuracy(
     sources_scanned: list[str],
     identity_confidence: float,
     findings_count: int,
+    sources_attempted: Optional[list[str]] = None,
 ) -> float:
     """
     Enhanced accuracy formula for passive scans.
 
     accuracy = (
-        data_sources_scanned / total_possible × 45%
+        data_coverage × 40%
         + identity_confidence × 20%
         + findings_depth × 25%
-        + classification_quality × 10%
+        + classification_quality × 15%
     )
 
-    Rebalanced: identity_confidence reduced to 20% (was 25%) because
-    PDL enrichment often fails for public figures. Findings depth
-    increased to 25% (was 15%) because having lots of data points
-    is a strong accuracy signal regardless of PDL match.
+    Key improvement: sources that were queried but returned zero results
+    still count toward coverage (at partial credit). A source that was
+    attempted tells us "there's nothing there" which is itself data.
+    Only sources that were never queried are truly unknown.
     """
-    # Breadth: how many source types did we scan?
+    # Coverage: sources scanned get full credit, sources attempted but empty
+    # get partial credit (0.6), sources never tried get 0
     possible_sources = {
         "serpapi_web", "serpapi_news", "twitter_mentions",
         "youtube_search", "enrichment", "courtlistener",
@@ -468,7 +470,16 @@ def _calculate_passive_accuracy(
         "github", "wikipedia",
     }
     scanned_set = set(sources_scanned)
-    breadth_score = len(scanned_set & possible_sources) / len(possible_sources) * 100
+    attempted_set = set(sources_attempted) if sources_attempted else set()
+
+    coverage_points = 0.0
+    for source in possible_sources:
+        if source in scanned_set:
+            coverage_points += 1.0  # Full credit: scanned and found data
+        elif source in attempted_set:
+            coverage_points += 0.6  # Partial credit: queried but empty (still data)
+
+    breadth_score = coverage_points / len(possible_sources) * 100
 
     # Findings depth: more findings = more statistically meaningful
     if findings_count == 0:
@@ -484,15 +495,14 @@ def _calculate_passive_accuracy(
     else:
         depth_score = 100.0
 
-    # Classification quality: having LLM classification available
-    # gives a 10% accuracy bonus (rule-based alone is less reliable)
-    classification_quality = 80.0 if settings.ANTHROPIC_API_KEY or settings.OPENAI_API_KEY else 40.0
+    # Classification quality: LLM classification is far more accurate
+    classification_quality = 90.0 if settings.ANTHROPIC_API_KEY or settings.OPENAI_API_KEY else 40.0
 
     accuracy = (
-        breadth_score * 0.45
+        breadth_score * 0.40
         + (identity_confidence * 100) * 0.20
         + depth_score * 0.25
-        + classification_quality * 0.10
+        + classification_quality * 0.15
     )
     return min(accuracy, 100.0)
 
@@ -560,6 +570,7 @@ async def run_passive_scan(
     """
     start_time = datetime.utcnow()
     sources_scanned: list[str] = []
+    sources_attempted: list[str] = []  # Sources queried but returned no results
     all_findings: list[PassiveFinding] = []
     identity_confidence = 0.3  # Base confidence from name alone
     enrichment_data: Optional[dict] = None
@@ -666,6 +677,19 @@ async def run_passive_scan(
         for t in [web_task, twitter_task, youtube_task, public_records_task]:
             if not t.done():
                 t.cancel()
+
+    # Track which sources were attempted vs. returned data
+    # Web search is always attempted if SerpAPI key exists
+    if settings.SERPAPI_API_KEY:
+        sources_attempted.extend(["serpapi_web", "serpapi_news"])
+    if settings.TWITTER_BEARER_TOKEN:
+        sources_attempted.append("twitter_mentions")
+    if settings.YOUTUBE_API_KEY:
+        sources_attempted.append("youtube_search")
+    # Public records sources are always attempted (free APIs, no keys needed)
+    sources_attempted.extend(["courtlistener", "sec_edgar", "uspto", "semantic_scholar", "opencorporates", "github", "wikipedia"])
+    if settings.PEOPLEDATALABS_API_KEY:
+        sources_attempted.append("enrichment")
 
     if web_results:
         sources_scanned.append("serpapi_web")
@@ -948,6 +972,7 @@ async def run_passive_scan(
         sources_scanned=sources_scanned,
         identity_confidence=identity_confidence,
         findings_count=len(all_findings),
+        sources_attempted=sources_attempted,
     )
 
     # Build findings summary for storage

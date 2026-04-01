@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.models.finding import Finding
 from app.services.content_classifier import classify_content_llm
+from app.services.name_disambiguator import disambiguate_result, _is_common_name
 
 logger = logging.getLogger("cloakhaven.google")
 
@@ -96,12 +97,31 @@ async def search_web(query: str, num_results: int = 10) -> list[dict]:
 async def _classify_result(
     item: dict,
     semaphore: asyncio.Semaphore,
+    full_name: str = "",
+    disambiguation_context: Optional[dict] = None,
 ) -> Optional[dict]:
-    """Classify a single search result with rate-limited LLM call."""
+    """Classify a single search result with rate-limited LLM call.
+
+    If disambiguation_context is provided and the name is common,
+    verifies the result is about the target person before classifying.
+    """
     url = item.get("link", "")
     title = item.get("title", "")
     snippet = item.get("snippet", "")
     source = _detect_source(url)
+
+    # Name disambiguation: verify result is about the target person
+    if disambiguation_context and full_name and _is_common_name(full_name):
+        async with semaphore:
+            disambig = await disambiguate_result(
+                target_name=full_name,
+                target_context=disambiguation_context,
+                result_title=title,
+                result_snippet=snippet,
+                result_url=url,
+            )
+        if not disambig.is_match or disambig.confidence < 0.5:
+            return None
 
     combined_text = f"{title} {snippet}"
     async with semaphore:
@@ -135,6 +155,7 @@ async def scan_web_presence(
     user_id: uuid.UUID,
     full_name: str,
     usernames: Optional[list[str]] = None,
+    disambiguation_context: Optional[dict] = None,
 ) -> list[Finding]:
     """
     Comprehensive web scan for a person's digital footprint.
@@ -163,8 +184,12 @@ async def scan_web_presence(
         f'"{full_name}" site:tiktok.com',
         f'"{full_name}" site:reddit.com',
         f'"{full_name}" site:twitter.com OR site:x.com',
+        # Additional social platforms
+        f'"{full_name}" site:discord.com OR site:discord.gg',
+        f'"{full_name}" site:threads.net OR site:mastodon.social',
+        f'"{full_name}" site:pinterest.com OR site:snapchat.com',
         # Professional platforms
-        f'"{full_name}" site:glassdoor.com',
+        f'"{full_name}" site:glassdoor.com OR site:indeed.com',
         f'"{full_name}" site:medium.com OR site:substack.com',
         f'"{full_name}" site:github.com',
         # Legal / court records
@@ -174,6 +199,8 @@ async def scan_web_presence(
         f'"{full_name}" award OR recognition OR keynote OR speaker OR published',
         # News coverage
         f'"{full_name}" news OR interview OR featured OR announced',
+        # Deleted/cached content
+        f'"{full_name}" site:web.archive.org',
     ]
 
     # Add username-based searches
@@ -202,7 +229,11 @@ async def scan_web_presence(
     # Classify all results concurrently (max 5 parallel LLM calls)
     semaphore = asyncio.Semaphore(5)
     classification_tasks = [
-        _classify_result(item, semaphore)
+        _classify_result(
+            item, semaphore,
+            full_name=full_name,
+            disambiguation_context=disambiguation_context,
+        )
         for item in unique_results
     ]
     classified = await asyncio.gather(*classification_tasks, return_exceptions=True)
