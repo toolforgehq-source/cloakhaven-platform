@@ -1,9 +1,12 @@
 """Tests for the scoring engine — modifiers, labels, colors, clamp."""
 
+import math
 from datetime import datetime, timedelta
 from app.services.scoring_engine import (
     recency_modifier,
     virality_modifier,
+    confidence_modifier,
+    industry_context_modifier,
     clamp,
     get_score_color,
     get_score_label,
@@ -13,42 +16,98 @@ from app.services.scoring_engine import (
 )
 
 
-# ── recency_modifier ────────────────────────────────────────────────────
+# ── recency_modifier (exponential decay: half_life=180d, max=2.0, floor=0.2) ─
 
 def test_recency_very_recent():
-    """Content from the last 30 days should have 2.0x impact."""
+    """Content from 5 days ago: close to max (2.0) but slightly decayed."""
     recent = datetime.utcnow() - timedelta(days=5)
-    assert recency_modifier(recent) == 2.0
+    result = recency_modifier(recent)
+    assert 1.9 < result < 2.0, f"5-day-old finding should be ~1.96, got {result}"
 
 
 def test_recency_90_days():
+    """Content from 60 days ago: decayed but still well above 1.0."""
     recent = datetime.utcnow() - timedelta(days=60)
-    assert recency_modifier(recent) == 1.5
+    result = recency_modifier(recent)
+    assert 1.4 < result < 1.7, f"60-day-old finding should be ~1.59, got {result}"
+
+
+def test_recency_half_life():
+    """At exactly 180 days, the modifier should be ~1.0 (half of 2.0)."""
+    old = datetime.utcnow() - timedelta(days=180)
+    result = recency_modifier(old)
+    assert 0.95 < result < 1.05, f"180-day-old finding should be ~1.0, got {result}"
 
 
 def test_recency_1_year():
-    old = datetime.utcnow() - timedelta(days=200)
-    assert recency_modifier(old) == 1.0
-
-
-def test_recency_3_years():
-    old = datetime.utcnow() - timedelta(days=800)
-    assert recency_modifier(old) == 0.7
-
-
-def test_recency_5_years():
-    old = datetime.utcnow() - timedelta(days=1500)
-    assert recency_modifier(old) == 0.5
+    """Content from 365 days ago: decayed past 1.0 but above floor."""
+    old = datetime.utcnow() - timedelta(days=365)
+    result = recency_modifier(old)
+    assert 0.4 < result < 0.6, f"365-day-old finding should be ~0.49, got {result}"
 
 
 def test_recency_very_old():
+    """Content from 3000 days ago: at the floor (0.2)."""
     old = datetime.utcnow() - timedelta(days=3000)
-    assert recency_modifier(old) == 0.3
+    result = recency_modifier(old)
+    assert result == 0.2, f"Very old finding should be at floor 0.2, got {result}"
 
 
 def test_recency_none():
     """None date should return 1.0 (neutral)."""
     assert recency_modifier(None) == 1.0
+
+
+def test_recency_monotonically_decreasing():
+    """Modifier should decrease as content gets older — no cliff edges."""
+    days = [0, 30, 60, 90, 180, 365, 730, 1500, 3000]
+    values = [recency_modifier(datetime.utcnow() - timedelta(days=d)) for d in days]
+    for i in range(1, len(values)):
+        assert values[i] <= values[i - 1], (
+            f"Not monotonically decreasing: day {days[i - 1]}={values[i - 1]}, "
+            f"day {days[i]}={values[i]}"
+        )
+
+
+# ── confidence_modifier ───────────────────────────────────────────────
+
+def test_confidence_high():
+    """High confidence (0.9+) should give ~1.2x weight."""
+    result = confidence_modifier(0.95)
+    assert 1.1 < result <= 1.2
+
+def test_confidence_medium():
+    """Medium confidence (~0.65) should give ~0.75x weight."""
+    result = confidence_modifier(0.65)
+    assert 0.6 < result < 0.9
+
+def test_confidence_low():
+    """Low confidence (0.3) should give floor weight (0.3)."""
+    result = confidence_modifier(0.3)
+    assert result == 0.3
+
+def test_confidence_zero():
+    """Zero confidence should give floor (0.3)."""
+    assert confidence_modifier(0.0) == 0.3
+
+
+# ── industry_context_modifier ─────────────────────────────────────────
+
+def test_industry_legal_court_records():
+    """Lawyers in court records should get reduced penalty."""
+    assert industry_context_modifier("court_records", "legal") == 0.3
+
+def test_industry_no_industry():
+    """No industry = default 1.0."""
+    assert industry_context_modifier("court_records", None) == 1.0
+
+def test_industry_unknown_category():
+    """Unknown category in a known industry = default 1.0."""
+    assert industry_context_modifier("some_random", "legal") == 1.0
+
+def test_industry_unknown_industry():
+    """Unknown industry = default 1.0."""
+    assert industry_context_modifier("court_records", "plumbing") == 1.0
 
 
 # ── virality_modifier ───────────────────────────────────────────────────
