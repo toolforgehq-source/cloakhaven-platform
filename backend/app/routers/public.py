@@ -90,12 +90,23 @@ def _build_full_response(p: PublicProfile) -> PublicProfileResponse:
     )
 
 
-async def _background_passive_scan(name: str) -> None:
+async def _background_passive_scan(
+    name: str,
+    company: str | None = None,
+    location: str | None = None,
+    linkedin_url: str | None = None,
+) -> None:
     """Run a passive scan in the background with its own DB session."""
     try:
         from app.services.passive_scanner import run_passive_scan
         async with async_session_factory() as db:
-            await run_passive_scan(db=db, name=name)
+            await run_passive_scan(
+                db=db,
+                name=name,
+                company=company,
+                location=location,
+                linkedin_url=linkedin_url,
+            )
             await db.commit()
         logger.info("Background passive scan completed for '%s'", name)
     except Exception as e:
@@ -106,6 +117,9 @@ async def _background_passive_scan(name: str) -> None:
 async def search_public_profiles(
     request: Request,
     q: str = Query(min_length=2, max_length=255),
+    company: str | None = Query(None, max_length=255, description="Company name (improves disambiguation)"),
+    location: str | None = Query(None, max_length=255, description="City/state (improves disambiguation)"),
+    linkedin_url: str | None = Query(None, max_length=500, description="LinkedIn profile URL"),
     background_tasks: BackgroundTasks = BackgroundTasks(),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -138,7 +152,13 @@ async def search_public_profiles(
         check_rate_limit(client_ip, scan_limiter, "Scan rate limit exceeded. Please wait before scanning new people.")
         check_daily_scan_cap(client_ip, q.strip())
         scan_pending = True
-        background_tasks.add_task(_background_passive_scan, q.strip())
+        background_tasks.add_task(
+            _background_passive_scan,
+            q.strip(),
+            company=company.strip() if company else None,
+            location=location.strip() if location else None,
+            linkedin_url=linkedin_url.strip() if linkedin_url else None,
+        )
 
     # Load user's purchased reports to check access
     purchases_result = await db.execute(
