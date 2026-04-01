@@ -473,7 +473,7 @@ def _calculate_passive_accuracy(
         "sec_edgar", "semantic_scholar", "github", "wikipedia",
         "stack_exchange", "wayback_machine",
         # Social platforms discovered via SerpAPI site: searches
-        "linkedin", "facebook", "instagram", "reddit",
+        "linkedin", "facebook", "instagram", "reddit", "tiktok",
     }
     scanned_set = set(sources_scanned)
     attempted_set = set(sources_attempted) if sources_attempted else set()
@@ -692,7 +692,7 @@ async def run_passive_scan(
     if settings.SERPAPI_API_KEY:
         sources_attempted.extend(["serpapi_web", "serpapi_news"])
         # Social platform site: searches are attempted via SerpAPI
-        sources_attempted.extend(["linkedin", "facebook", "instagram", "reddit"])
+        sources_attempted.extend(["linkedin", "facebook", "instagram", "reddit", "tiktok"])
     if settings.TWITTER_BEARER_TOKEN:
         sources_attempted.append("twitter_mentions")
     if settings.YOUTUBE_API_KEY:
@@ -712,6 +712,7 @@ async def run_passive_scan(
             "facebook.com": "facebook",
             "instagram.com": "instagram",
             "reddit.com": "reddit",
+            "tiktok.com": "tiktok",
         }
         for result in web_results:
             url = result.get("link", "").lower()

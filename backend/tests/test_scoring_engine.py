@@ -247,7 +247,7 @@ def test_passive_accuracy_all_scanned():
         "youtube_search", "enrichment", "courtlistener",
         "sec_edgar", "semantic_scholar", "github", "wikipedia",
         "stack_exchange", "wayback_machine",
-        "linkedin", "facebook", "instagram", "reddit",
+        "linkedin", "facebook", "instagram", "reddit", "tiktok",
     ]
     result = _calculate_passive_accuracy(
         sources_scanned=all_sources,
