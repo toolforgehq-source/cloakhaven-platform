@@ -431,3 +431,109 @@ def classify_uploaded_content(
 ) -> ClassificationResult:
     """Classify content from an uploaded data archive."""
     return classify_content(text, source=platform, engagement_count=engagement_count)
+
+
+# ============================================================
+# IMAGE / VIDEO CONTENT ANALYSIS
+# ============================================================
+
+IMAGE_ANALYSIS_PROMPT = """You are analyzing an image found in search results or social media for CloakHaven digital reputation scoring.
+
+Describe what you see in the image and classify it using the same categories as text content:
+- Is there anything problematic (hate symbols, explicit content, illegal activity, substance abuse)?
+- Is there anything positive (professional events, awards, community service)?
+- Is it neutral (normal photo, selfie, landscape, food)?
+
+Respond with ONLY a JSON object:
+{"category": "...", "confidence": 0.0-1.0, "severity_score": 1-10, "description": "brief description of what's in the image"}
+"""
+
+
+async def classify_image_content(
+    image_url: str,
+    source: str = "image",
+    context: str = "",
+) -> Optional[ClassificationResult]:
+    """
+    Classify an image using OpenAI's vision API (GPT-4o supports image input).
+
+    Falls back to None if no vision-capable API key is available,
+    letting the caller decide how to handle unclassified images.
+    """
+    if not settings.OPENAI_API_KEY:
+        return None
+
+    try:
+        messages = [
+            {"role": "system", "content": IMAGE_ANALYSIS_PROMPT},
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": f"Source: {source}. Context: {context[:500]}"},
+                    {"type": "image_url", "image_url": {"url": image_url, "detail": "low"}},
+                ],
+            },
+        ]
+
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.post(
+                "https://api.openai.com/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {settings.OPENAI_API_KEY}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "model": "gpt-4o-mini",
+                    "messages": messages,
+                    "temperature": 0.1,
+                    "max_tokens": 300,
+                },
+            )
+
+        if response.status_code != 200:
+            logger.warning("OpenAI Vision API error: %d", response.status_code)
+            return None
+
+        data = response.json()
+        content = data["choices"][0]["message"]["content"].strip()
+
+        # Parse JSON response
+        if content.startswith("```"):
+            content = content.strip("`").strip()
+            if content.startswith("json"):
+                content = content[4:].strip()
+
+        result = json.loads(content)
+        category = result.get("category", "neutral")
+        confidence = float(result.get("confidence", 0.5))
+        description = result.get("description", "Image content")
+
+        if category not in CATEGORY_WEIGHTS:
+            category = "neutral"
+
+        if confidence < 0.5:
+            category = "neutral"
+
+        severity = SEVERITY_MAP.get(category, "neutral")
+        base_impact = CATEGORY_WEIGHTS.get(category, 0.0)
+
+        severity_score = int(result.get("severity_score", 5))
+        severity_score = max(1, min(10, severity_score))
+        severity_mult = severity_score / 5.0
+        adjusted_impact = base_impact * severity_mult
+
+        return ClassificationResult(
+            category=category,
+            severity=severity,
+            confidence=confidence,
+            title=f"Image content from {source}",
+            description=f"Image analysis: {description[:300]}. Category: '{category}' ({confidence:.0%} confidence).",
+            base_score_impact=adjusted_impact,
+        )
+
+    except json.JSONDecodeError:
+        logger.warning("OpenAI Vision returned non-JSON response")
+        return None
+    except Exception as e:
+        logger.warning("Image classification failed: %s", e)
+        return None

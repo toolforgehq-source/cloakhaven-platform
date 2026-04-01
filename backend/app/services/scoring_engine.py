@@ -20,8 +20,9 @@ Each finding has:
   - Dispute resolution exclusion
 """
 
+import math
 import uuid
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 from typing import Optional
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -111,27 +112,29 @@ BASE_SCORE = 850
 
 def recency_modifier(finding_date: Optional[datetime]) -> float:
     """
-    More recent findings have higher impact.
-    Range: 0.3x to 2.0x
+    Smooth exponential temporal decay for finding impact.
+
+    Uses an exponential decay function instead of step buckets so that
+    a 31-day-old finding isn't suddenly worth half as much as a 30-day-old one.
+
+    Formula: impact = max_mult * e^(-lambda * days) clamped to [floor, max_mult]
+      - max_mult = 2.0 (very recent content has 2x impact)
+      - half_life = 180 days (impact halves every 6 months)
+      - floor = 0.2 (very old content still has 20% impact)
     """
     if finding_date is None:
         return 1.0
 
     now = datetime.utcnow()
-    days_ago = (now - finding_date).days
+    days_ago = max((now - finding_date).days, 0)
 
-    if days_ago <= 30:
-        return 2.0
-    elif days_ago <= 90:
-        return 1.5
-    elif days_ago <= 365:
-        return 1.0
-    elif days_ago <= 1095:  # 3 years
-        return 0.7
-    elif days_ago <= 1825:  # 5 years
-        return 0.5
-    else:
-        return 0.3
+    max_mult = 2.0
+    half_life = 180.0  # days
+    floor = 0.2
+    decay_lambda = math.log(2) / half_life
+
+    modifier = max_mult * math.exp(-decay_lambda * days_ago)
+    return max(modifier, floor)
 
 
 def virality_modifier(engagement_count: int) -> float:
@@ -151,6 +154,24 @@ def virality_modifier(engagement_count: int) -> float:
         return 2.5
     else:
         return 3.0
+
+
+def confidence_modifier(confidence: float) -> float:
+    """
+    Findings classified with higher confidence should have greater score impact.
+
+    Low-confidence classifications (e.g. ambiguous content) are downweighted
+    so they don't unfairly penalize or reward the subject.
+
+    Range: 0.3x to 1.2x
+      - confidence >= 0.9 → 1.2x (high-confidence finding gets full+ weight)
+      - confidence ~0.5 → 0.6x (coin-flip classification heavily discounted)
+      - confidence < 0.3 → 0.3x (near-random classification, minimal impact)
+    """
+    if confidence <= 0:
+        return 0.3
+    # Linear interpolation from (0.3, 0.3) to (1.0, 1.2)
+    return max(0.3, min(1.2, 0.3 + (confidence - 0.3) * (1.2 - 0.3) / (1.0 - 0.3)))
 
 
 def pattern_modifier(category: str, all_findings: list[Finding]) -> float:
@@ -185,6 +206,64 @@ def is_juvenile_content(finding_date: Optional[datetime], user_dob: Optional[dat
         return False
     age_at_post = (finding_date.date() - user_dob).days / 365.25
     return age_at_post < 18
+
+
+# ============================================================
+# INDUSTRY / PROFESSION CONTEXT MODIFIER
+# ============================================================
+
+# Some findings are expected in certain professions and should be
+# weighted differently. A lawyer appearing in court records is normal;
+# a doctor publishing in academic journals is expected.
+INDUSTRY_CONTEXT_OVERRIDES: dict[str, dict[str, float]] = {
+    "legal": {
+        "court_records": 0.3,       # Lawyers appear in court records routinely
+        "negative_press": 0.5,      # High-profile cases attract press
+    },
+    "medical": {
+        "professional_achievement": 1.3,  # Publications/research are core output
+        "verified_credentials": 1.5,     # Board certs matter more
+    },
+    "politics": {
+        "controversial_opinions": 0.0,   # Politicians express opinions publicly
+        "negative_press": 0.3,           # Press coverage is constant
+        "political_extremism": 0.6,      # Stronger opinions are more expected
+    },
+    "finance": {
+        "sec_edgar": 0.5,                # SEC filings are routine for finance professionals
+        "court_records": 0.7,            # Regulatory proceedings are more common
+    },
+    "entertainment": {
+        "explicit_content": 0.5,         # Entertainment industry norms differ
+        "profanity": 0.3,               # Language norms are looser
+        "negative_press": 0.3,          # Tabloid coverage is constant
+    },
+    "technology": {
+        "constructive_content": 1.3,     # Open-source contributions valued
+        "professional_achievement": 1.2, # Patents, publications matter
+    },
+}
+
+
+def industry_context_modifier(
+    category: str,
+    industry: Optional[str] = None,
+) -> float:
+    """
+    Adjust finding impact based on the subject's profession/industry.
+
+    Returns a multiplier (default 1.0). Industries where a finding category
+    is routine get a reduced multiplier; industries where a category is
+    especially meaningful get an increased multiplier.
+    """
+    if not industry:
+        return 1.0
+    industry_lower = industry.lower()
+    # Match industry to closest known context
+    for key, overrides in INDUSTRY_CONTEXT_OVERRIDES.items():
+        if key in industry_lower:
+            return overrides.get(category, 1.0)
+    return 1.0
 
 
 # ============================================================
@@ -281,13 +360,20 @@ async def calculate_score(db: AsyncSession, user_id: uuid.UUID) -> Score:
         if finding.is_disputed and finding.dispute_status == "overturned":
             continue
 
-        # Calculate modified impact
+        # Calculate modified impact with all modifiers
         base_impact = finding.base_score_impact
         r_mod = recency_modifier(finding.original_date)
         v_mod = virality_modifier(finding.platform_engagement_count)
         p_mod = pattern_modifier(finding.category, findings)
+        c_mod = confidence_modifier(getattr(finding, 'confidence', 0.8))
 
-        final_impact = base_impact * r_mod * v_mod * p_mod
+        # Industry context: look up user's industry from their profile
+        i_mod = industry_context_modifier(
+            finding.category,
+            industry=getattr(user, 'industry', None) if user else None,
+        )
+
+        final_impact = base_impact * r_mod * v_mod * p_mod * c_mod * i_mod
 
         # Update the finding's final_score_impact
         finding.final_score_impact = final_impact
@@ -417,6 +503,92 @@ async def calculate_score(db: AsyncSession, user_id: uuid.UUID) -> Score:
 
     await db.flush()
     return score_record
+
+
+# ============================================================
+# BEHAVIORAL TRAJECTORY TRACKING
+# ============================================================
+
+async def calculate_score_trajectory(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    lookback_days: int = 90,
+) -> dict:
+    """
+    Analyze score history to determine the behavioral trajectory.
+
+    Returns a dict with:
+      - trend: "improving" | "stable" | "declining"
+      - slope: float (positive = improving, negative = declining)
+      - recent_scores: list of recent score snapshots
+      - volatility: float (0-1, how much the score fluctuates)
+
+    This gives users and employers a richer picture than a single
+    point-in-time score. Someone at 650 but steadily improving is
+    very different from someone at 750 but declining.
+    """
+    cutoff = datetime.utcnow() - timedelta(days=lookback_days)
+    result = await db.execute(
+        select(ScoreHistory)
+        .where(
+            ScoreHistory.user_id == user_id,
+            ScoreHistory.recorded_at >= cutoff,
+        )
+        .order_by(ScoreHistory.recorded_at.asc())
+    )
+    history = list(result.scalars().all())
+
+    if len(history) < 2:
+        return {
+            "trend": "stable",
+            "slope": 0.0,
+            "recent_scores": [
+                {"score": h.overall_score, "date": h.recorded_at.isoformat()}
+                for h in history
+            ],
+            "volatility": 0.0,
+            "data_points": len(history),
+        }
+
+    scores = [h.overall_score for h in history]
+    dates = [h.recorded_at for h in history]
+
+    # Linear regression (simple least-squares) to find trend slope
+    n = len(scores)
+    # Convert dates to numeric (days since first data point)
+    day_offsets = [(d - dates[0]).total_seconds() / 86400.0 for d in dates]
+    x_mean = sum(day_offsets) / n
+    y_mean = sum(scores) / n
+
+    numerator = sum((x - x_mean) * (y - y_mean) for x, y in zip(day_offsets, scores))
+    denominator = sum((x - x_mean) ** 2 for x in day_offsets)
+
+    slope = numerator / denominator if denominator != 0 else 0.0
+
+    # Classify trend based on slope (points per day)
+    if slope > 0.5:
+        trend = "improving"
+    elif slope < -0.5:
+        trend = "declining"
+    else:
+        trend = "stable"
+
+    # Volatility: standard deviation of score changes between consecutive readings
+    changes = [abs(scores[i] - scores[i - 1]) for i in range(1, len(scores))]
+    avg_change = sum(changes) / len(changes) if changes else 0.0
+    # Normalize to 0-1 range (100-point change = max volatility)
+    volatility = min(avg_change / 100.0, 1.0)
+
+    return {
+        "trend": trend,
+        "slope": round(slope, 3),
+        "recent_scores": [
+            {"score": h.overall_score, "date": h.recorded_at.isoformat()}
+            for h in history[-10:]  # Last 10 data points
+        ],
+        "volatility": round(volatility, 3),
+        "data_points": n,
+    }
 
 
 def get_score_color(score: int) -> str:

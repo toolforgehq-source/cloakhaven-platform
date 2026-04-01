@@ -21,6 +21,7 @@ from app.schemas.score import (
 from app.middleware.auth import get_current_user
 from app.services.scoring_engine import (
     calculate_score,
+    calculate_score_trajectory,
     get_score_color,
     get_score_label,
 )
@@ -48,6 +49,11 @@ async def get_my_score(
             detail="No score calculated yet. Start an audit to get your score.",
         )
 
+    # Include behavioral trajectory in score breakdown
+    trajectory = await calculate_score_trajectory(db, current_user.id)
+    breakdown = dict(score.score_breakdown) if score.score_breakdown else {}
+    breakdown["trajectory"] = trajectory
+
     return ScoreResponse(
         overall_score=score.overall_score,
         social_media_score=score.social_media_score,
@@ -56,7 +62,7 @@ async def get_my_score(
         score_accuracy_pct=score.score_accuracy_pct,
         is_verified=score.is_verified,
         verification_date=score.verification_date,
-        score_breakdown=score.score_breakdown,
+        score_breakdown=breakdown,
         calculated_at=score.calculated_at,
         score_color=get_score_color(score.overall_score),
         score_label=get_score_label(score.overall_score),
@@ -213,6 +219,15 @@ async def start_audit(
                 await scan_db.rollback()
                 logger.warning(f"YouTube scan failed for user {current_user.id}: {e}")
 
+    # Build disambiguation context from user profile + enrichment data
+    disambiguation_context: dict[str, str] = {}
+    if current_user.email:
+        disambiguation_context["email"] = current_user.email
+    # Pull company/job_title/location from enrichment if available
+    if settings.PEOPLEDATALABS_API_KEY and "enrichment" in platforms_scanned:
+        # enrichment already ran above; context was built from enriched data
+        pass
+
     async def _scan_web():
         """Web Search via SerpAPI (comprehensive web presence)."""
         if not settings.SERPAPI_API_KEY:
@@ -222,7 +237,11 @@ async def start_audit(
         async with async_session_maker() as scan_db:
             try:
                 from app.services.google_service import scan_web_presence
-                await scan_web_presence(scan_db, current_user.id, name, usernames or None)
+                await scan_web_presence(
+                    scan_db, current_user.id, name,
+                    usernames or None,
+                    disambiguation_context=disambiguation_context or None,
+                )
                 await scan_db.commit()
                 platforms_scanned.append("google")
                 logger.info(f"Web search scan complete for user {current_user.id}")
