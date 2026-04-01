@@ -1,8 +1,8 @@
-"""Public profile and search endpoints."""
+"""Public profile and search endpoints — gated behind authentication + payment."""
 
-import asyncio
 import logging
 import uuid
+from datetime import datetime
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, or_
@@ -13,6 +13,7 @@ from app.models.score import Score
 from app.models.finding import Finding
 from app.models.social_account import SocialAccount
 from app.models.public_profile import PublicProfile
+from app.models.purchased_report import PurchasedReport
 from app.schemas.public import (
     PublicProfileResponse,
     PublicSearchResponse,
@@ -28,6 +29,65 @@ from app.middleware.rate_limit import public_limiter, scan_limiter, check_rate_l
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/public", tags=["public"])
+
+
+def _user_has_report_access(user: User, profile_id: uuid.UUID, purchases: list[PurchasedReport]) -> bool:
+    """Check if user has access to a specific report (subscriber or purchased)."""
+    if user.subscription_tier == "subscriber" and user.subscription_status == "active":
+        return True
+    now = datetime.utcnow()
+    for p in purchases:
+        if p.profile_id == profile_id and p.expires_at > now:
+            return True
+    return False
+
+
+def _build_teaser_response(p: PublicProfile) -> PublicProfileResponse:
+    """Build a gated teaser response — no score, no findings, just metadata."""
+    findings_data = p.public_findings_summary or {}
+    total_findings = findings_data.get("total_findings", p.total_findings_count or 0)
+    sources = findings_data.get("sources_scanned", [])
+    sources_count = len(sources) if isinstance(sources, list) else (p.sources_scanned_count or 0)
+
+    return PublicProfileResponse(
+        id=p.id,
+        lookup_name=p.lookup_name,
+        lookup_username=p.lookup_username,
+        public_score=None,  # GATED — no score
+        score_accuracy_pct=None,
+        is_claimed=p.is_claimed,
+        score_color=None,
+        score_label=None,
+        last_scanned_at=p.last_scanned_at,
+        public_findings_summary=None,  # GATED — no findings
+        total_findings_count=total_findings,
+        sources_scanned_count=sources_count,
+        is_locked=True,
+    )
+
+
+def _build_full_response(p: PublicProfile) -> PublicProfileResponse:
+    """Build a full unlocked response with all data."""
+    findings_data = p.public_findings_summary or {}
+    total_findings = findings_data.get("total_findings", p.total_findings_count or 0)
+    sources = findings_data.get("sources_scanned", [])
+    sources_count = len(sources) if isinstance(sources, list) else (p.sources_scanned_count or 0)
+
+    return PublicProfileResponse(
+        id=p.id,
+        lookup_name=p.lookup_name,
+        lookup_username=p.lookup_username,
+        public_score=p.public_score,
+        score_accuracy_pct=p.score_accuracy_pct,
+        is_claimed=p.is_claimed,
+        score_color=get_score_color(p.public_score) if p.public_score else None,
+        score_label=get_score_label(p.public_score) if p.public_score else None,
+        last_scanned_at=p.last_scanned_at,
+        public_findings_summary=p.public_findings_summary,
+        total_findings_count=total_findings,
+        sources_scanned_count=sources_count,
+        is_locked=False,
+    )
 
 
 async def _background_passive_scan(name: str) -> None:
@@ -47,14 +107,17 @@ async def search_public_profiles(
     request: Request,
     q: str = Query(min_length=2, max_length=255),
     background_tasks: BackgroundTasks = BackgroundTasks(),
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Search for a person's public score. Available to anyone.
+    """Search for a person's public score. Requires authentication.
 
-    If a cached profile exists, returns it instantly.
+    Results are gated behind payment:
+    - Free users see a teaser (name, sources count, findings count — NO score, NO findings)
+    - Paid users ($8 single report or $49/mo subscriber) see the full report
+
     If no cached profile is found and query looks like a name, triggers a
     background passive scan and returns an empty result with scan_pending=true.
-    The caller should poll GET /api/v1/scan/lookup/{name} to check when the scan completes.
     """
     client_ip = get_client_ip(request)
     check_rate_limit(client_ip, public_limiter)
@@ -71,30 +134,31 @@ async def search_public_profiles(
     scan_pending = False
 
     # If no profiles found and query looks like a name, trigger BACKGROUND scan
-    # (non-blocking — returns immediately instead of waiting 60s)
     if not profiles and len(q.strip()) >= 3 and " " in q.strip():
-        # Apply stricter scan-specific rate limits (expensive operation)
         check_rate_limit(client_ip, scan_limiter, "Scan rate limit exceeded. Please wait before scanning new people.")
         check_daily_scan_cap(client_ip, q.strip())
         scan_pending = True
         background_tasks.add_task(_background_passive_scan, q.strip())
 
+    # Load user's purchased reports to check access
+    purchases_result = await db.execute(
+        select(PurchasedReport).where(
+            PurchasedReport.user_id == current_user.id,
+            PurchasedReport.expires_at > datetime.utcnow(),
+        )
+    )
+    purchases = list(purchases_result.scalars().all())
+
+    # Build responses — gated or full based on payment status
+    responses = []
+    for p in profiles:
+        if _user_has_report_access(current_user, p.id, purchases):
+            responses.append(_build_full_response(p))
+        else:
+            responses.append(_build_teaser_response(p))
+
     return PublicSearchResponse(
-        results=[
-            PublicProfileResponse(
-                id=p.id,
-                lookup_name=p.lookup_name,
-                lookup_username=p.lookup_username,
-                public_score=p.public_score,
-                score_accuracy_pct=p.score_accuracy_pct,
-                is_claimed=p.is_claimed,
-                score_color=get_score_color(p.public_score) if p.public_score else None,
-                score_label=get_score_label(p.public_score) if p.public_score else None,
-                last_scanned_at=p.last_scanned_at,
-                public_findings_summary=p.public_findings_summary,
-            )
-            for p in profiles
-        ],
+        results=responses,
         total=len(profiles),
         scan_pending=scan_pending,
     )
@@ -103,9 +167,10 @@ async def search_public_profiles(
 @router.get("/profile/{username}", response_model=PublicProfileResponse)
 async def get_public_profile(
     username: str,
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Get a public profile by username."""
+    """Get a public profile by username. Requires auth + payment gating."""
     result = await db.execute(
         select(PublicProfile).where(PublicProfile.lookup_username == username)
     )
@@ -117,18 +182,18 @@ async def get_public_profile(
             detail="Profile not found",
         )
 
-    return PublicProfileResponse(
-        id=profile.id,
-        lookup_name=profile.lookup_name,
-        lookup_username=profile.lookup_username,
-        public_score=profile.public_score,
-        score_accuracy_pct=profile.score_accuracy_pct,
-        is_claimed=profile.is_claimed,
-        score_color=get_score_color(profile.public_score) if profile.public_score else None,
-        score_label=get_score_label(profile.public_score) if profile.public_score else None,
-        last_scanned_at=profile.last_scanned_at,
-        public_findings_summary=profile.public_findings_summary,
+    # Check payment access
+    purchases_result = await db.execute(
+        select(PurchasedReport).where(
+            PurchasedReport.user_id == current_user.id,
+            PurchasedReport.expires_at > datetime.utcnow(),
+        )
     )
+    purchases = list(purchases_result.scalars().all())
+
+    if _user_has_report_access(current_user, profile.id, purchases):
+        return _build_full_response(profile)
+    return _build_teaser_response(profile)
 
 
 @router.post("/claim", response_model=MessageResponse)

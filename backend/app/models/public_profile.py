@@ -33,3 +33,4 @@ class PublicProfile(Base):
     posting_behavior_score: Mapped[int | None] = mapped_column(Integer)
     total_findings_count: Mapped[int | None] = mapped_column(Integer, default=0)
     scan_duration_seconds: Mapped[float | None] = mapped_column(Float)
+    sources_scanned_count: Mapped[int | None] = mapped_column(Integer, default=0)

@@ -76,7 +76,11 @@ class Settings(BaseSettings):
     SENTRY_DSN: str = ""
 
     # Frontend URL (for email links, CORS, etc.)
-    FRONTEND_URL: str = "http://localhost:5173"
+    # Auto-detect Fly.io app URL if FRONTEND_URL is not explicitly set
+    FRONTEND_URL: str = os.environ.get(
+        "FRONTEND_URL",
+        f"https://{os.environ['FLY_APP_NAME']}.fly.dev" if os.environ.get("FLY_APP_NAME") else "http://localhost:5173"
+    )
 
     # File upload
     MAX_UPLOAD_SIZE_MB: int = 5120  # 5GB

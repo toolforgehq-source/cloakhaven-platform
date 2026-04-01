@@ -104,7 +104,7 @@ export default function Settings() {
   const [visibility, setVisibility] = useState(user?.profile_visibility || "public");
   const [visibilitySaving, setVisibilitySaving] = useState(false);
 
-  const handleCheckout = async (type: "audit" | "subscriber" | "employer") => {
+  const handleCheckout = async (type: "lookup" | "unlimited") => {
     setCheckoutError("");
     setCheckoutLoading(type);
     try {
@@ -293,27 +293,20 @@ export default function Settings() {
               {checkoutError}
             </div>
           )}
-          <div className="grid sm:grid-cols-3 gap-3">
+          <div className="grid sm:grid-cols-2 gap-3">
             <button
-              onClick={() => handleCheckout("audit")}
+              onClick={() => handleCheckout("lookup")}
               disabled={checkoutLoading !== null}
               className="bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-white py-2.5 rounded-lg text-sm font-medium transition"
             >
-              {checkoutLoading === "audit" ? "Processing..." : "One-Time Audit — $19"}
+              {checkoutLoading === "lookup" ? "Processing..." : "Single Report — $8"}
             </button>
             <button
-              onClick={() => handleCheckout("subscriber")}
+              onClick={() => handleCheckout("unlimited")}
               disabled={checkoutLoading !== null}
               className="bg-indigo-500 hover:bg-indigo-600 disabled:opacity-50 text-white py-2.5 rounded-lg text-sm font-medium transition"
             >
-              {checkoutLoading === "subscriber" ? "Processing..." : "Monthly — $9/mo"}
-            </button>
-            <button
-              onClick={() => handleCheckout("employer")}
-              disabled={checkoutLoading !== null}
-              className="bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-white py-2.5 rounded-lg text-sm font-medium transition"
-            >
-              {checkoutLoading === "employer" ? "Processing..." : "Employer — $49/mo"}
+              {checkoutLoading === "unlimited" ? "Processing..." : "Unlimited — $49/mo"}
             </button>
           </div>
         </div>
